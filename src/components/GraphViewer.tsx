@@ -5,7 +5,7 @@ import Graph from "graphology";
 
 type GraphData = {
   nodes: Array<{id: string; label?: string; x: number; y: number; size?: number; degree?: number; community?: number | null; allDBs?: string[]; hasAllDBsNone?: boolean}>;
-  edges: Array<{id: string; source: string; target: string; weight?: number; allDBs?: string}>;
+  edges: Array<{id: string; source: string; target: string; weight?: number; allDBs?: string; afmprob?: number}>;
   adjacency: Record<string, string[]>;
   clusters: Array<{id: string; label?: string; x: number; y: number; size?: number; community: number; count: number}>;
   meta?: {order: number; size: number};
@@ -41,6 +41,8 @@ export default function GraphViewer() {
   const nameIndexRef = React.useRef<Array<{id: string; name: string; nameLower: string}>>([]);
   const nodesBlueSetRef = React.useRef<Set<string>>(new Set());
   const edgeAllDBsRef = React.useRef<Record<string, string>>({});
+  const suppressCamAnimRef = React.useRef<boolean>(false);
+  const blueAdjacencyRef = React.useRef<Record<string, string[]>>({});
   const nodesBlueCountsRef = React.useRef<Record<string, number>>({});
   const maxBlueCountRef = React.useRef<number>(0);
   const [totals, setTotals] = React.useState<{nodes: number; edges: number; blueEdges: number}>({nodes: 0, edges: 0, blueEdges: 0});
@@ -65,13 +67,240 @@ export default function GraphViewer() {
   const degreeThresholdRef = React.useRef(degreeThreshold);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchMatches, setSearchMatches] = React.useState<Array<{id: string; name: string}>>([]);
+  const [showOnlyNew, setShowOnlyNew] = React.useState(false);
+  const showOnlyNewRef = React.useRef(showOnlyNew);
+  const [confidence, setConfidence] = React.useState(0);
+  const confidenceRef = React.useRef(confidence);
+  const [minConfidence, setMinConfidence] = React.useState(0);
+
+  function recomputeFocusedInfoImmediate(nodeId: string) {
+    const g = graphRef.current;
+    if (!g) return;
+    const thr = degreeThresholdRef.current;
+    const onlyNew = showOnlyNewRef.current;
+    const conf = confidence;
+    let degF = 0, blueF = 0;
+    g.forEachEdge((e, attrs, sId, tId) => {
+      if (sId !== nodeId && tId !== nodeId) return;
+      const other = sId === nodeId ? tId : sId;
+      const otherDeg = (g.getNodeAttribute(other, 'degree') as number) || 0;
+      const hideByDeg = thr > 0 && otherDeg < thr;
+      const hideByNewNode = onlyNew && !nodesBlueSetRef.current.has(other);
+      if (hideByDeg || hideByNewNode) return;
+      const ap = (attrs as any)?.afmprob;
+      if (typeof ap === 'number' && ap < conf) return;
+      const adb = (attrs as any)?.allDBs || '';
+      const isNone = String(adb).trim().toLowerCase() === 'none';
+      if (onlyNew && !isNone) return;
+      degF++;
+      if (isNone) blueF++;
+    });
+    let nm = (g.getNodeAttribute(nodeId, 'name') as string) || nodeId;
+    if (!nm || !nm.trim()) {
+      const found = nameIndexRef.current.find((e) => e.id === nodeId);
+      nm = (found && found.name) || (g.getNodeAttribute(nodeId, 'label') as string) || nodeId;
+    }
+    setFocusedInfo({id: nodeId, name: nm, degree: degF, blue: blueF});
+  }
+
+  function recomputeTotalsImmediate() {
+    const g = graphRef.current;
+    if (!g) return;
+    const thr = degreeThresholdRef.current;
+    const onlyNew = showOnlyNewRef.current;
+    const conf = confidence;
+    const visibleNodes = new Set<string>();
+    let nodesCount = 0;
+    g.forEachNode((n, attrs) => {
+      if ((attrs as any)?.isCluster) return;
+      const deg = (attrs as any)?.degree || 0;
+      const hideByDeg = thr > 0 && deg < thr;
+      const hideByNew = onlyNew && !nodesBlueSetRef.current.has(n);
+      if (!(hideByDeg || hideByNew)) { nodesCount++; visibleNodes.add(n); }
+    });
+    let edgesCount = 0, blueCount = 0;
+    g.forEachEdge((e, attrs, sId, tId) => {
+      if (!visibleNodes.has(sId) || !visibleNodes.has(tId)) return;
+      const ap = (attrs as any)?.afmprob;
+      if (typeof ap === 'number' && ap < conf) return;
+      const adb = (attrs as any)?.allDBs || '';
+      const isNone = String(adb).trim().toLowerCase() === 'none';
+      if (onlyNew && !isNone) return;
+      edgesCount++;
+      if (isNone) blueCount++;
+    });
+    setTotals({nodes: nodesCount, edges: edgesCount, blueEdges: blueCount});
+  }
 
   React.useEffect(() => {
     showEdgesRef.current = showEdges;
   }, [showEdges]);
   React.useEffect(() => {
     degreeThresholdRef.current = degreeThreshold;
+    // Recompute totals and refresh based on new degree filter
+    const g = graphRef.current;
+    if (g) {
+      // apply node visibility per degree (existing behavior)
+      g.forEachNode((n) => {
+        const deg = (g.getNodeAttribute(n, 'degree') as number) || 0;
+        const hideByDeg = degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current;
+        const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
+        g.setNodeAttribute(n, 'hidden', hideByDeg || hideByNew);
+      });
+      // recompute totals
+      const thr = degreeThresholdRef.current;
+      const onlyNew = showOnlyNewRef.current;
+      const visibleNodes = new Set<string>();
+      let nodesCount = 0;
+      g.forEachNode((n, attrs) => {
+        if ((attrs as any)?.isCluster) return;
+        const deg = (attrs as any)?.degree || 0;
+        const hideByDeg = thr > 0 && deg < thr;
+        const hideByNew = onlyNew && !nodesBlueSetRef.current.has(n);
+        if (!(hideByDeg || hideByNew)) { nodesCount++; visibleNodes.add(n); }
+      });
+      let edgesCount = 0, blueCount = 0;
+      g.forEachEdge((e, attrs, sId, tId) => {
+        if (!visibleNodes.has(sId) || !visibleNodes.has(tId)) return;
+        const adb = (attrs as any)?.allDBs || '';
+        const isNone = String(adb).trim().toLowerCase() === 'none';
+        if (onlyNew && !isNone) return;
+        edgesCount++;
+        if (isNone) blueCount++;
+      });
+      setTotals({nodes: nodesCount, edges: edgesCount, blueEdges: blueCount});
+      sigmaRef.current?.refresh();
+      // update focused info if present
+      if (focusedNodeRef.current) {
+        const node = focusedNodeRef.current;
+        let degF = 0, blueF = 0;
+        g.forEachEdge((e, attrs, sId, tId) => {
+          if (sId !== node && tId !== node) return;
+          const other = sId === node ? tId : sId;
+          if (!visibleNodes.has(other)) return;
+          const adb = (attrs as any)?.allDBs || '';
+          const isNone = String(adb).trim().toLowerCase() === 'none';
+          if (onlyNew && !isNone) return;
+          degF++;
+          if (isNone) blueF++;
+        });
+        setFocusedInfo((prev) => prev ? {...prev, degree: degF, blue: blueF} : prev);
+      }
+    }
   }, [degreeThreshold]);
+  React.useEffect(() => {
+    const g = graphRef.current;
+    const s = sigmaRef.current as any;
+    if (!g || !s) return;
+    const thr = degreeThresholdRef.current;
+    const onlyNew = showOnlyNewRef.current;
+    const conf = confidence;
+    const visibleNodes = new Set<string>();
+    g.forEachNode((n, attrs) => {
+      if ((attrs as any)?.isCluster) return;
+      const deg = (attrs as any)?.degree || 0;
+      const hideByDeg = thr > 0 && deg < thr;
+      const hideByNew = onlyNew && !nodesBlueSetRef.current.has(n);
+      if (!(hideByDeg || hideByNew)) visibleNodes.add(n);
+    });
+    // If focused, rebuild neighbor set with filters, update edges/nodes; suppress camera anim
+    const focused = focusedNodeRef.current;
+    if (focused) {
+      const neighbors = new Set<string>();
+      neighbors.add(focused);
+      g.forEachEdge((e, attrs, sId, tId) => {
+        const isEnd = sId === focused || tId === focused;
+        if (!isEnd) return;
+        const other = sId === focused ? tId : sId;
+        if (!visibleNodes.has(other)) return;
+        const adb = (attrs as any)?.allDBs || '';
+        const isNone = String(adb).trim().toLowerCase() === 'none';
+        if (onlyNew && !isNone) return;
+        const ap = (attrs as any)?.afmprob;
+        if (typeof ap === 'number' && ap < conf) return;
+        neighbors.add(sId); neighbors.add(tId);
+      });
+      // update node hidden flags and edge visibility
+      g.forEachNode((n, attrs) => {
+        if ((attrs as any)?.isCluster) return;
+        const isNeighbor = neighbors.has(n);
+        const hideByDeg = thr > 0 && ((attrs as any)?.degree || 0) < thr;
+        const hideByNew = onlyNew && !nodesBlueSetRef.current.has(n);
+        const hidden = !isNeighbor || hideByDeg || hideByNew;
+        g.setNodeAttribute(n, 'hidden', hidden);
+      });
+      g.forEachEdge((e, attrs, sId, tId) => {
+        const vis = neighbors.has(sId) && neighbors.has(tId);
+        const ap = (attrs as any)?.afmprob;
+        const adb = (attrs as any)?.allDBs || '';
+        const isNone = String(adb).trim().toLowerCase() === 'none';
+        const hideByNewEdge = onlyNew && !isNone;
+        const hideByConf = typeof ap === 'number' && ap < conf;
+        g.setEdgeAttribute(e, 'hidden', !vis || hideByNewEdge || hideByConf);
+      });
+      // No camera movement; we've already updated visibility
+    }
+    // Update totals and focused stats (already handled by existing effect)
+    s.refresh();
+  }, [confidence]);
+
+  React.useEffect(() => {
+    showOnlyNewRef.current = showOnlyNew;
+    // Re-apply base visibility when toggled
+    const g = graphRef.current;
+    if (!g) return;
+    g.forEachNode((n, attrs) => {
+      if (attrs.isCluster) return;
+      const deg = attrs.degree || 0;
+      const hideByDeg = degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current;
+      const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
+      g.setNodeAttribute(n, 'hidden', hideByDeg || hideByNew);
+    });
+    // recompute totals like in degree/confidence effects
+    const thr = degreeThresholdRef.current;
+    const onlyNew = showOnlyNewRef.current;
+    const conf = confidenceRef.current;
+    const visibleNodes = new Set<string>();
+    let nodesCount = 0;
+    g.forEachNode((n, attrs) => {
+      if ((attrs as any)?.isCluster) return;
+      const deg = (attrs as any)?.degree || 0;
+      const hideByDeg = thr > 0 && deg < thr;
+      const hideByNew = onlyNew && !nodesBlueSetRef.current.has(n);
+      if (!(hideByDeg || hideByNew)) { nodesCount++; visibleNodes.add(n); }
+    });
+    let edgesCount = 0, blueCount = 0;
+    g.forEachEdge((e, attrs, sId, tId) => {
+      if (!visibleNodes.has(sId) || !visibleNodes.has(tId)) return;
+      const ap = (attrs as any)?.afmprob;
+      if (typeof ap === 'number' && ap < conf) return;
+      const adb = (attrs as any)?.allDBs || '';
+      const isNone = String(adb).trim().toLowerCase() === 'none';
+      if (onlyNew && !isNone) return;
+      edgesCount++;
+      if (isNone) blueCount++;
+    });
+    setTotals({nodes: nodesCount, edges: edgesCount, blueEdges: blueCount});
+    // If focused, recompute focused info numbers to ensure info box updates
+    if (focusedNodeRef.current) {
+      const node = focusedNodeRef.current;
+      let degF = 0, blueF = 0;
+      g.forEachEdge((e, attrs, sId, tId) => {
+        if (sId !== node && tId !== node) return;
+        const other = sId === node ? tId : sId;
+        if (!visibleNodes.has(other)) return;
+        const ap = (attrs as any)?.afmprob;
+        if (typeof ap === 'number' && ap < conf) return;
+        const adb = (attrs as any)?.allDBs || '';
+        const isNone = String(adb).trim().toLowerCase() === 'none';
+        if (onlyNew && !isNone) return;
+        degF++;
+        if (isNone) blueF++;
+      });
+      setFocusedInfo((prev) => prev ? {...prev, degree: degF, blue: blueF} : prev);
+    }
+    sigmaRef.current?.refresh();
+  }, [showOnlyNew]);
 
   React.useEffect(() => {
     let disposed = false;
@@ -312,6 +541,22 @@ export default function GraphViewer() {
       const blueEdgesCount = (data.edges || []).reduce((acc, e) => acc + ((e.allDBs || '').trim().toLowerCase() === 'none' ? 1 : 0), 0);
       setTotals({nodes: (data.nodes || []).length, edges: (data.edges || []).length, blueEdges: blueEdgesCount});
 
+      // Compute min confidence (AFMprob) from dataset and initialize slider/state
+      let minProb = Infinity;
+      for (const e of data.edges || []) {
+        const ap = typeof e.afmprob === 'number' ? e.afmprob : undefined;
+        if (typeof ap === 'number' && !Number.isNaN(ap)) {
+          if (ap < minProb) minProb = ap;
+        }
+      }
+      if (!Number.isFinite(minProb)) minProb = 0;
+      setMinConfidence(minProb);
+      // Do not force slider value here if user reloads; initialize only if still default 0
+      if (confidenceRef.current === 0) {
+        setConfidence(minProb);
+        confidenceRef.current = minProb;
+      }
+
       const g = new Graph();
       // Add nodes
       for (const n of data.nodes) {
@@ -351,11 +596,19 @@ export default function GraphViewer() {
       // Add edges (we will toggle their rendering later)
       for (const e of data.edges) {
         const id = e.id || `${e.source}-${e.target}`;
-        if (!g.hasEdge(id)) g.addEdgeWithKey(id, e.source, e.target, {weight: e.weight ?? 1, allDBs: e.allDBs || ''});
+        if (!g.hasEdge(id)) g.addEdgeWithKey(id, e.source, e.target, {weight: e.weight ?? 1, allDBs: e.allDBs || '', afmprob: e.afmprob});
         edgeAllDBsRef.current[id] = e.allDBs || '';
       }
       // Hide all edges by default; they'll appear on hover
-      g.forEachEdge((edge) => g.setEdgeAttribute(edge, "hidden", true));
+      g.forEachEdge((edge, attrs) => {
+        const adb = (attrs as any).allDBs || '';
+        const isNone = String(adb).trim().toLowerCase() === 'none';
+        const hideByNew = showOnlyNewRef.current && !isNone;
+        const ap = (attrs as any).afmprob;
+        const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
+        g.setEdgeAttribute(edge, "hidden", true || hideByNew);
+        if (hideByConf) g.setEdgeAttribute(edge, 'hidden', true);
+      });
       // Precompute nodes involved in 'none' edges and counts for heatmap
       const nodesBlue = new Set<string>();
       const counts: Record<string, number> = {};
@@ -375,6 +628,14 @@ export default function GraphViewer() {
         if (nodesBlue.has(n)) {
           const c = counts[n] || 0;
           g.setNodeAttribute(n, 'color', getHeatColorForCount(c));
+        }
+        // Apply initial visibility if only-new filter is active
+        const attrs = g.getNodeAttributes(n) as any;
+        if (!attrs?.isCluster) {
+          const deg = attrs?.degree || 0;
+          const hideByDeg = degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current;
+          const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
+          g.setNodeAttribute(n, 'hidden', hideByDeg || hideByNew);
         }
       });
 
@@ -534,14 +795,28 @@ export default function GraphViewer() {
           const neighbors = new Set<string>();
           if (node) {
             neighbors.add(node);
-            for (const nb of adjacencyRef.current[node] || []) neighbors.add(nb);
+            const onlyNew = showOnlyNewRef.current;
+            const conf = confidenceRef.current;
+            // Build neighbors based on filters (only-new and confidence)
+            g.forEachEdge((e, attrs, sId, tId) => {
+              const isEnd = sId === node || tId === node;
+              if (!isEnd) return;
+              const adb = (attrs as any).allDBs || '';
+              const isNone = String(adb).trim().toLowerCase() === 'none';
+              if (onlyNew && !isNone) return;
+              const ap = (attrs as any).afmprob;
+              if (typeof ap === 'number' && ap < conf) return;
+              neighbors.add(sId);
+              neighbors.add(tId);
+            });
           }
 
           g.forEachNode((n) => {
             const isCluster = !!g.getNodeAttribute(n, "isCluster");
             if (isCluster) return; // ignore clusters in hover focus
             const isNeighbor = node ? neighbors.has(n) : true;
-            g.setNodeAttribute(n, "highlighted", isNeighbor ? 1 : 0);
+            const shouldHighlight = node ? isNeighbor : false;
+            g.setNodeAttribute(n, "highlighted", shouldHighlight ? 1 : 0);
             // Always keep blue nodes visible with heatmap intensity; dim non-neighbors
             const isBlueNode = nodesBlueSetRef.current.has(n);
             if (isBlueNode) {
@@ -552,7 +827,9 @@ export default function GraphViewer() {
               g.setNodeAttribute(n, "color", isNeighbor ? undefined : "#bbb");
             }
             // Only show hovered node and neighbors; hide others
-            const hidden = node ? !isNeighbor : (degreeThresholdRef.current > 0 && (g.getNodeAttribute(n, "degree") || 0) < degreeThresholdRef.current);
+            const hideByDeg = degreeThresholdRef.current > 0 && (g.getNodeAttribute(n, "degree") || 0) < degreeThresholdRef.current;
+            const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
+            const hidden = node ? !isNeighbor || hideByNew : (hideByDeg || hideByNew);
             g.setNodeAttribute(n, "hidden", clusterModeRef.current ? true : hidden);
             // Show label only for hovered node
             const name = g.getNodeAttribute(n, "name") || "";
@@ -567,15 +844,25 @@ export default function GraphViewer() {
           // Draw only edges connected to hovered node when showEdges is on
           if (showEdgesRef.current) {
             g.forEachEdge((e, _attr, sId, tId) => {
-              const visible = node ? neighbors.has(sId) && neighbors.has(tId) : false;
+              let visible = node ? neighbors.has(sId) && neighbors.has(tId) : false;
               const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
               const isNone = adb === 'none';
-              g.setEdgeAttribute(e, "hidden", !visible);
+              const hideByNew = showOnlyNewRef.current && !isNone;
+              const ap = g.getEdgeAttribute(e, 'afmprob') as number | undefined;
+              const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
+              g.setEdgeAttribute(e, "hidden", !visible || hideByNew || hideByConf);
               if (visible) g.setEdgeAttribute(e, 'color', isNone ? '#3b82f6' : undefined);
               else g.setEdgeAttribute(e, 'color', undefined);
             });
           } else {
-            g.forEachEdge((e) => g.setEdgeAttribute(e, "hidden", true));
+            g.forEachEdge((e) => {
+              const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
+              const isNone = adb === 'none';
+              const hideByNew = showOnlyNewRef.current && !isNone;
+              const ap = g.getEdgeAttribute(e, 'afmprob') as number | undefined;
+              const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
+              g.setEdgeAttribute(e, "hidden", true || hideByNew || hideByConf);
+            });
           }
 
           // Camera focus
@@ -586,22 +873,33 @@ export default function GraphViewer() {
               if (!focusedNodeRef.current) prevCamStateRef.current = cam.getState();
             }
             focusedNodeRef.current = node;
-            // Update focused info (degree and blue-degree)
+            // Update focused info (degree and blue-degree) respecting filters
             try {
-              const deg = typeof (g as any).degree === 'function' ? (g as any).degree(node) : (adjacencyRef.current[node] || []).length;
-              let blue = 0;
+              const thr = degreeThresholdRef.current;
+              const onlyNew = showOnlyNewRef.current;
+              const conf = confidenceRef.current;
+              let degF = 0, blueF = 0;
               g.forEachEdge((e, attrs, sId, tId) => {
-                if (sId === node || tId === node) {
-                  const adb = (attrs as any).allDBs || '';
-                  if (String(adb).trim().toLowerCase() === 'none') blue += 1;
-                }
+                if (sId !== node && tId !== node) return;
+                const other = sId === node ? tId : sId;
+                const otherDeg = (g.getNodeAttribute(other, 'degree') as number) || 0;
+                const hideByDeg = thr > 0 && otherDeg < thr;
+                const hideByNewNode = onlyNew && !nodesBlueSetRef.current.has(other);
+                if (hideByDeg || hideByNewNode) return;
+                const ap = (attrs as any)?.afmprob;
+                if (typeof ap === 'number' && ap < conf) return;
+                const adb = (attrs as any)?.allDBs || '';
+                const isNone = String(adb).trim().toLowerCase() === 'none';
+                if (onlyNew && !isNone) return;
+                degF++;
+                if (isNone) blueF++;
               });
               let nm = g.getNodeAttribute(node, 'name') as string | undefined;
               if (!nm || !nm.trim()) {
                 const found = nameIndexRef.current.find((e) => e.id === node);
                 nm = (found && found.name) || (g.getNodeAttribute(node, 'label') as string) || node;
               }
-              setFocusedInfo({id: node, name: nm, degree: deg, blue});
+              setFocusedInfo({id: node, name: nm, degree: degF, blue: blueF});
             } catch {}
             const x = g.getNodeAttribute(node, "x");
             const y = g.getNodeAttribute(node, "y");
@@ -621,16 +919,18 @@ export default function GraphViewer() {
                 margins: {mx, my}, clamped: {x: tx, y: ty}});
             }
             // Avoid restarting the same animation while one is in progress
-            if (!isAnimatingRef.current && focusedNodeRef.current === node) {
-              try { 
-                (window as any).__suspendLOD = true;
-                isAnimatingRef.current = true;
-                (cam as any).animate(target, {duration: 500, easing: 'quadraticInOut'} as any);
-                window.setTimeout(() => { (window as any).__suspendLOD = false; isAnimatingRef.current = false; }, 520);
-              } catch {
-                cam.setState(target);
-                (window as any).__suspendLOD = false;
-                isAnimatingRef.current = false;
+            if (!suppressCamAnimRef.current) {
+              if (!isAnimatingRef.current && focusedNodeRef.current === node) {
+                try { 
+                  (window as any).__suspendLOD = true;
+                  isAnimatingRef.current = true;
+                  (cam as any).animate(target, {duration: 500, easing: 'quadraticInOut'} as any);
+                  window.setTimeout(() => { (window as any).__suspendLOD = false; isAnimatingRef.current = false; }, 520);
+                } catch {
+                  cam.setState(target);
+                  (window as any).__suspendLOD = false;
+                  isAnimatingRef.current = false;
+                }
               }
             }
           } else if (focusedNodeRef.current) {
@@ -646,11 +946,13 @@ export default function GraphViewer() {
               } catch { cam.setState(st); isAnimatingRef.current = false; }
               focusedNodeRef.current = null;
               setFocusedInfo(null);
-              // Restore nodes (respect degree filter)
+              // Restore nodes (respect degree filter) and keep only-new filter
               g.forEachNode((n, attrs) => {
                 if (attrs.isCluster) return;
                 const deg = attrs.degree || 0;
-                g.setNodeAttribute(n, "hidden", degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current);
+                const hideByDeg = degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current;
+                const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
+                g.setNodeAttribute(n, "hidden", hideByDeg || hideByNew);
                 g.setNodeAttribute(n, "label", "");
                 // Preserve heatmap blue after defocus
                 if (nodesBlueSetRef.current.has(n)) {
@@ -663,6 +965,14 @@ export default function GraphViewer() {
                 // restore size
                 const baseSize = g.getNodeAttribute(n, "baseSize") || g.getNodeAttribute(n, "size") || 1;
                 g.setNodeAttribute(n, "size", baseSize);
+              });
+              // Hide non-new edges when only-new is active
+              g.forEachEdge((e, attrs) => {
+                const adb = (attrs as any).allDBs || '';
+                const isNone = String(adb).trim().toLowerCase() === 'none';
+                const ap = (attrs as any).afmprob;
+                const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
+                if ((showOnlyNewRef.current && !isNone) || hideByConf) g.setEdgeAttribute(e, 'hidden', true);
               });
               s.refresh();
             }, 180);
@@ -707,8 +1017,47 @@ export default function GraphViewer() {
           if (defocusTimerRef.current) { window.clearTimeout(defocusTimerRef.current); defocusTimerRef.current = null; }
           setHovered(node);
         });
-        // Click empty stage to defocus
-        s.on("clickStage", () => setHovered(undefined));
+        // Click empty stage: if clicking on a visible label badge, treat as clicking that node; otherwise defocus
+        s.on("clickStage", (evt: any) => {
+          let handled = false;
+          try {
+            // Compute viewport pixel coords from clientX/Y when available
+            const rect = container.getBoundingClientRect();
+            const ex = (evt && (evt.event?.original?.clientX ?? evt.event?.clientX ?? evt.event?.x ?? evt.x)) ?? 0;
+            const ey = (evt && (evt.event?.original?.clientY ?? evt.event?.clientY ?? evt.event?.y ?? evt.y)) ?? 0;
+            const px = ex - rect.left;
+            const py = ey - rect.top;
+            const nodesWithLabel: string[] = [];
+            g.forEachNode((n) => {
+              const lbl = (g.getNodeAttribute(n, 'label') as string) || '';
+              const hidden = !!g.getNodeAttribute(n, 'hidden');
+              if (!hidden && lbl) nodesWithLabel.push(n);
+            });
+            for (const n of nodesWithLabel) {
+              const label = (g.getNodeAttribute(n, 'label') as string) || '';
+              const xg = g.getNodeAttribute(n, 'x');
+              const yg = g.getNodeAttribute(n, 'y');
+              if (typeof xg !== 'number' || typeof yg !== 'number' || !label) continue;
+              const vp = (s as any).graphToViewport?.({x: xg, y: yg}) || {x: 0, y: 0};
+              const sizePx = ((s as any).getNodeDisplayData?.(n)?.size) || 4;
+              const startX = vp.x + sizePx + 6;
+              const width = Math.max(24, Math.min(260, label.length * 6.5));
+              const endX = startX + width;
+              const startY = vp.y - 10;
+              const endY = vp.y + 6;
+              if (px >= startX && px <= endX && py >= startY && py <= endY) {
+                handled = true;
+                setHovered(n);
+                break;
+              }
+            }
+          } catch {}
+          if (handled) return;
+          // clear any labels and edges when defocusing via empty click
+          g.forEachNode((n) => g.setNodeAttribute(n, 'label', ''));
+          g.forEachEdge((e) => g.setEdgeAttribute(e, 'hidden', true));
+          setHovered(undefined);
+        });
         // Hover preview handlers (no camera movement)
         s.on("enterNode", ({node}) => previewHover(node));
         s.on("leaveNode", () => previewHover(undefined));
@@ -1032,7 +1381,7 @@ export default function GraphViewer() {
 
   return (
     <div className="w-full h-full flex flex-col relative">
-      <div className="absolute top-2 left-2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 shadow text-sm">
+      <div className="absolute top-2 left-2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm max-w-xs">
         {focusedInfo ? (
           <div>
             <div><span className="font-medium">Protein:</span> {focusedInfo.name}</div>
@@ -1046,6 +1395,50 @@ export default function GraphViewer() {
             <div><span className="font-medium">New interactions:</span> {totals.blueEdges}</div>
           </div>
         )}
+      </div>
+      {/* Sidebar controls box under info box */}
+      <div className="absolute top-28 left-2 z-10 w-80 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm flex flex-col gap-3">
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span>Show only new</span>
+          <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
+        </label>
+        <div className="flex items-center justify-between">
+          <span className="whitespace-nowrap">Confidence level</span>
+          <span className="tabular-nums">{confidence.toFixed(2)}</span>
+        </div>
+          <input
+          className="w-full"
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={confidence}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setConfidence(v);
+              confidenceRef.current = v;
+            recomputeTotalsImmediate();
+              if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
+            }}
+        />
+        <div className="flex items-center justify-between">
+          <span className="whitespace-nowrap">Degree ≥</span>
+          <span className="tabular-nums">{degreeThreshold}</span>
+        </div>
+          <input
+          className="w-full"
+          type="range"
+          min={0}
+          max={50}
+          step={1}
+          value={degreeThreshold}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setDegreeThreshold(v);
+            recomputeTotalsImmediate();
+              if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
+            }}
+        />
       </div>
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
         <div className="relative">
@@ -1074,22 +1467,6 @@ export default function GraphViewer() {
             </div>
           )}
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span>Degree ≥</span>
-          <input
-            type="range"
-            min={0}
-            max={50}
-            step={1}
-            value={degreeThreshold}
-            onChange={(e) => setDegreeThreshold(Number(e.target.value))}
-          />
-          <span>{degreeThreshold}</span>
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showEdges} onChange={(e) => setShowEdges(e.target.checked)} />
-          <span>Show edges on hover</span>
-        </label>
       </div>
       <div ref={containerRef} className="absolute inset-0" />
       <canvas ref={fallbackCanvasRef} className="absolute inset-0" style={{display: "none"}} />
