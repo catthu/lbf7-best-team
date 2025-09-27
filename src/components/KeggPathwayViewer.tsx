@@ -269,12 +269,14 @@ function divergingColor(v: number) {
   return `rgb(${r},${g},${b})`;
 }
 
-export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay = {}, showNodeLabels = true }: {pathwayId?: string; edgeOverlay?: Record<string, number>; showNodeLabels?: boolean}) {
+export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay = {}, showNodeLabels = true, onProteinSet, selectedSymbols, onSelectSymbols }: {pathwayId?: string; edgeOverlay?: Record<string, number>; showNodeLabels?: boolean; onProteinSet?: (payload: {geneIds: string[]; symbols: string[]}) => void; selectedSymbols?: string[]; onSelectSymbols?: (symbols: string[]) => void}) {
   const cyRef = useRef<cytoscape.Core | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("Loading KGML…");
   const [sideInfo, setSideInfo] = useState<any>(null);
   const [mapDims, setMapDims] = useState({ w: 1200, h: 1200 });
+  const tooltipLayerRef = useRef<HTMLDivElement | null>(null);
+  const selectedLowerRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -319,6 +321,8 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
             }},
             { selector: "node[type='gene']", style: { "background-color": "#BFFFBF", "font-size": 9 } },
             { selector: "node[type='compound']", style: { "background-color": "#FFFFFF", shape: "ellipse" } },
+            // cross-highlight style
+            { selector: "node.xhl", style: { "border-width": 3, "border-color": "#f59e0b", "background-color": "#fde68a" } },
             { selector: "node[type='map']", style: { "background-color": "#FFFFFF", "border-color": "#666", "border-width": 1, shape: "round-rectangle", "font-size": 9, "font-weight": "bold", "text-valign": "center", "text-halign": "center", "text-wrap": "wrap", "text-max-width": (ele: any) => (entries[ele.id()]?.w || 90) - 6, color: labelTextColor } },
             { selector: "node[name='path:hsa04150']", style: { "background-color": "#F0F8FF", "border-color": "#4682B4", "border-width": 2, "font-size": 12, "font-weight": "bold", color: "#000080" } },
             { selector: "node[type='group']", style: { "background-color": "#E0E0E0", "border-color": "#888", "border-width": 2, shape: "round-rectangle", "font-size": 10, "font-weight": "bold", "text-valign": "center", "text-halign": "center" } },
@@ -357,8 +361,25 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
           containerRef.current.style.border = prefersDarkNow ? '2px solid #374151' : '2px solid #ddd';
           containerRef.current.style.boxShadow = prefersDarkNow ? '0 2px 8px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.1)';
         }
+        const ensureTooltipLayer = () => {
+          const container = containerRef.current!;
+          let layer = tooltipLayerRef.current;
+          if (!layer) {
+            layer = document.createElement('div');
+            layer.style.position = 'absolute';
+            layer.style.left = '0';
+            layer.style.top = '0';
+            layer.style.right = '0';
+            layer.style.bottom = '0';
+            layer.style.pointerEvents = 'none';
+            container.appendChild(layer);
+            tooltipLayerRef.current = layer;
+          }
+          return layer;
+        };
         const makeTooltip = (ele: any) => {
-          const ref = ele.popperRef();
+          const layer = ensureTooltipLayer();
+          const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           const t = document.createElement("div");
           t.className = "tooltip bubble";
           const data = (entries as any)[ele.id()];
@@ -368,22 +389,36 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
           const geneData: GeneData | undefined = ele.data("geneData");
           let tooltipContent = `\n            <div style="font-weight:600;margin-bottom:6px;color:#2563eb">${data?.name || ele.id()}</div>\n          `;
           if (nodeType === "gene" && geneData) {
-            if (geneData.fullName) tooltipContent += `<div style="font-size:11px;color:#374151;margin-bottom:3px;font-style:italic">${geneData.fullName}</div>`;
-            if (geneData.synonyms && geneData.synonyms.length > 1) tooltipContent += `<div style="font-size:10px;color:#6b7280;margin-bottom:2px"><strong>Synonyms:</strong> ${geneData.synonyms.slice(1, 4).join(', ')}${geneData.synonyms.length > 4 ? '...' : ''}</div>`;
+            if (geneData.fullName) tooltipContent += `<div style="font-size:11px;color:${prefersDark ? '#d1d5db' : '#374151'};margin-bottom:3px;font-style:italic">${geneData.fullName}</div>`;
+            if (geneData.synonyms && geneData.synonyms.length > 1) tooltipContent += `<div style="font-size:10px;color:${prefersDark ? '#9ca3af' : '#6b7280'};margin-bottom:2px"><strong>Synonyms:</strong> ${geneData.synonyms.slice(1, 4).join(', ')}${geneData.synonyms.length > 4 ? '...' : ''}</div>`;
             if (geneData.uniprotId) tooltipContent += `<div style="font-size:10px;color:#059669;margin-bottom:2px"><strong>UniProt:</strong> <a href="https://www.uniprot.org/uniprot/${geneData.uniprotId}" target="_blank" style="color:#059669;">${geneData.uniprotId}</a></div>`;
             if (geneData.chromosomePosition) tooltipContent += `<div style="font-size:10px;color:#7c3aed;margin-bottom:2px"><strong>Location:</strong> ${geneData.chromosomePosition.replace(/complement\(|[()]/g, '')}</div>`;
             if (geneData.drugs && geneData.drugs.length > 0) tooltipContent += `<div style="font-size:10px;color:#dc2626;margin-bottom:2px"><strong>Drugs:</strong> ${geneData.drugs.slice(0, 2).join(', ')}${geneData.drugs.length > 2 ? '...' : ''}</div>`;
           } else if (nodeType === "group" && components && components.length > 0) {
-            tooltipContent += `<div style="font-size:11px;color:#666;margin-bottom:2px">Complex with ${components.length} components</div>`;
+            tooltipContent += `<div style=\"font-size:11px;color:${prefersDark ? '#9ca3af' : '#666'};margin-bottom:2px\">Complex with ${components.length} components</div>`;
           } else if (rawLabel && rawLabel !== data?.name) {
-            tooltipContent += `<div style="font-size:11px;color:#666;margin-bottom:2px">${rawLabel}</div>`;
+            tooltipContent += `<div style=\"font-size:11px;color:${prefersDark ? '#9ca3af' : '#666'};margin-bottom:2px\">${rawLabel}</div>`;
           }
-          tooltipContent += `<div style="font-size:10px;color:#6b7280;margin-top:4px">Click for details</div>`;
+          tooltipContent += `<div style="font-size:10px;color:${prefersDark ? '#9ca3af' : '#6b7280'};margin-top:4px">Click for details</div>`;
           t.innerHTML = tooltipContent;
-          t.style.cssText = `background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif; max-width: 300px; font-size: 12px; line-height: 1.4; z-index: 1000;`;
-          document.body.appendChild(t);
-          const tip = ele.popper({ content: () => t, popper: { placement: "top", removeOnDestroy: true } });
-          ele.on("mouseout", () => { tip.destroy(); t.remove(); });
+          t.style.cssText = `position:absolute; background:${prefersDark ? '#111827' : 'white'}; border: 1px solid ${prefersDark ? '#374151' : '#e5e7eb'}; border-radius: 8px; padding: 8px 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); font-family: system-ui, -apple-system, sans-serif; max-width: 300px; font-size: 12px; line-height: 1.4; z-index: 1000; pointer-events: none;`;
+          layer.appendChild(t);
+          const place = () => {
+            try {
+              const rp = ele.renderedPosition();
+              t.style.left = `${Math.round(rp.x)}px`;
+              t.style.top = `${Math.round(rp.y - 12)}px`;
+              t.style.transform = 'translate(-50%, -100%)';
+            } catch {}
+          };
+          place();
+          const onMove = () => place();
+          ele.on('position', onMove);
+          cy.on('pan zoom', onMove);
+          ele.on("mouseout", () => {
+            try { ele.removeListener('position', onMove); cy.removeListener('pan zoom', onMove); } catch {}
+            if (t && t.parentElement) t.parentElement.removeChild(t);
+          });
         };
         cy.on("mouseover", "node", (evt) => makeTooltip(evt.target));
         cy.on("tap", "node", (evt) => {
@@ -399,6 +434,12 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
           }
           const sideInfoData = { id: n.id(), label: e?.name || n.data("label"), rawLabel: n.data("rawLabel"), keggId: n.data("keggId"), type: nodeType || "", components: n.data("components"), geneData: n.data("geneData"), multipleGenes, x: e?.x, y: e?.y, w: e?.w, h: e?.h };
           setSideInfo(sideInfoData);
+          try {
+            if (nodeType === 'gene') {
+              const syms = (n.data('symbols') as string[] | undefined) || ([(n.data('label') as string) || ''].filter(Boolean));
+              if (onSelectSymbols && syms && syms.length) onSelectSymbols(syms);
+            }
+          } catch {}
         });
         cy.resize();
         const bb = cy.nodes().boundingBox();
@@ -425,7 +466,33 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
           setStatus("Fetching gene names...");
           const geneNodes = cy.nodes().filter(node => node.data('type') === 'gene');
           if (geneNodes.length === 0) { setStatus(""); return; }
-          try { await getBulkStandardizedGeneNames(geneNodes, entries); if (!cancelled) setStatus(""); } catch { if (!cancelled) setStatus(""); }
+          try {
+            await getBulkStandardizedGeneNames(geneNodes, entries);
+            if (!cancelled) setStatus("");
+          } catch {
+            if (!cancelled) setStatus("");
+          } finally {
+            try {
+              // Build full gene list: include all gene IDs present on nodes (including multi-gene entries)
+              const allGeneIds: string[] = [];
+              geneNodes.forEach((n) => {
+                const keggId: string | undefined = n.data('keggId');
+                if (!keggId) return;
+                const ids = keggId.split(/\s+/).filter(id => id.startsWith('hsa:'));
+                for (const id of ids) allGeneIds.push(id);
+                // attach symbols to node for cross-highlighting
+                const syms: string[] = ids.map((gid) => (geneNameCache.get(gid)?.symbol || '')).filter(Boolean);
+                if (syms.length === 0) {
+                  const lbl = (n.data('label') as string) || '';
+                  if (lbl) syms.push(lbl);
+                }
+                n.data('symbols', syms);
+              });
+              const uniqIds = Array.from(new Set(allGeneIds));
+              const symbols: string[] = uniqIds.map((gid) => (geneNameCache.get(gid)?.symbol || gid));
+              onProteinSet && onProteinSet({geneIds: uniqIds, symbols});
+            } catch {}
+          }
         }, 100);
       } catch (err) {
         setStatus("Failed to load KGML. (CORS? Try the proxy below.)");
@@ -435,6 +502,23 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
     run();
     return () => { cancelled = true; cyRef.current?.destroy(); };
   }, [pathwayId, showNodeLabels, edgeOverlay]);
+
+  // Cross-highlight when selectedSymbols from parent change
+  React.useEffect(() => {
+    const cy = cyRef.current as any;
+    if (!cy) return;
+    try {
+      cy.nodes().removeClass('xhl');
+      const list = (selectedSymbols || []).map((s) => (s || '').toLowerCase());
+      if (!list.length) return;
+      cy.nodes().forEach((n: any) => {
+        if (n.data('type') !== 'gene') return;
+        const syms = (n.data('symbols') as string[] | undefined) || [];
+        const hit = syms.some((s) => list.includes((s || '').toLowerCase()));
+        if (hit) n.addClass('xhl');
+      });
+    } catch {}
+  }, [selectedSymbols?.join(',')]);
 
   return (
     <div className="w-full">
@@ -446,125 +530,116 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
         <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 shadow" style={{ width: mapDims.w, height: mapDims.h }} />
       </div>
       {sideInfo && (
-        <div className="fixed right-6 top-24 w-96 max-h-[calc(100vh-120px)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-xl z-50 overflow-y-auto text-gray-900 dark:text-gray-100">
-          <div className="flex justify-between items-center mb-4">
+        <div className="fixed left-6 bottom-6 w-[720px] max-w-[92vw] bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-xl z-50 overflow-y-auto text-gray-900 dark:text-gray-100">
+          <div className="flex justify-between items-center mb-3">
             <h3 className="text-lg font-semibold">{sideInfo.label}</h3>
             <button onClick={() => setSideInfo(null)} className="text-gray-400 hover:text-gray-200 text-xl leading-none">×</button>
           </div>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-2 text-sm">
             <div>
               <span className="font-medium">Type:</span>
               <span className="ml-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs">{sideInfo.type || "-"}</span>
             </div>
-            {sideInfo.type === "gene" && (sideInfo.multipleGenes?.length > 0 || sideInfo.geneData) ? (
-              <div className="space-y-4">
-                {sideInfo.multipleGenes && sideInfo.multipleGenes.length > 1 ? (
-                  <div>
-                    <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
-                      <span className="font-medium text-blue-800">Multiple Genes ({sideInfo.multipleGenes.length})</span>
-                      <div className="text-xs text-blue-600 mt-1">This complex contains {sideInfo.multipleGenes.length} different genes</div>
-                    </div>
-                    {sideInfo.multipleGenes.map((gene: any, index: number) => (
-                      <div key={gene.keggId} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="font-medium text-gray-900">Gene {index + 1}</h4>
-                          <a href={`https://www.kegg.jp/entry/${gene.keggId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-blue-600 hover:underline bg-blue-100 px-2 py-1 rounded">{gene.keggId}</a>
-                        </div>
-                        {gene.geneData ? (
-                          <div className="space-y-2">
-                            {gene.geneData.fullName && (
-                              <div>
-                                <span className="text-xs font-medium text-gray-700">Description:</span>
-                                <div className="text-xs text-gray-600 italic">{gene.geneData.fullName}</div>
-                              </div>
-                            )}
-                            {gene.geneData.synonyms && gene.geneData.synonyms.length > 1 && (
-                              <div>
-                                <span className="text-xs font-medium text-gray-700">Synonyms:</span>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {gene.geneData.synonyms.slice(0, 3).map((syn: string, i: number) => (
-                                    <span key={i} className={`${i === 0 ? 'bg-blue-100 text-blue-800 font-medium' : 'bg-gray-100 text-gray-700'} inline-block px-1 py-0.5 rounded text-xs`}>{syn}</span>
-                                  ))}
-                                  {gene.geneData.synonyms.length > 3 && (
-                                    <span className="text-xs text-gray-500">+{gene.geneData.synonyms.length - 3}</span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            <div className="text-xs space-y-1">
-                              {gene.geneData.uniprotId && (
-                                <div className="flex justify-between"><span className="text-gray-600">UniProt:</span><a href={`https://www.uniprot.org/uniprot/${gene.geneData.uniprotId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-green-600 hover:underline">{gene.geneData.uniprotId}</a></div>
-                              )}
-                              {gene.geneData.ensemblId && (
-                                <div className="flex justify-between"><span className="text-gray-600">Ensembl:</span><span className="font-mono text-blue-600">{gene.geneData.ensemblId}</span></div>
-                              )}
+            {(() => {
+              if (sideInfo.type === "gene" && (sideInfo.multipleGenes?.length > 0 || sideInfo.geneData)) {
+                if (sideInfo.multipleGenes && sideInfo.multipleGenes.length > 1) {
+                  return (
+                    <div>
+                      <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                        <span className="font-medium text-blue-800">Multiple Genes ({sideInfo.multipleGenes.length})</span>
+                        <div className="text-xs text-blue-600 mt-1">This complex contains {sideInfo.multipleGenes.length} different genes</div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {sideInfo.multipleGenes.map((gene: any, index: number) => (
+                          <div key={gene.keggId} className="border border-gray-200 dark:border-gray-700 rounded-md p-3 bg-gray-50 dark:bg-gray-800">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <h4 className="font-medium">Gene {index + 1}</h4>
+                              <a href={`https://www.kegg.jp/entry/${gene.keggId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-blue-600 hover:underline bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded">{gene.keggId}</a>
                             </div>
+                            {gene.geneData ? (
+                              <div className="space-y-1.5">
+                                {gene.geneData.fullName && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-300 italic">{gene.geneData.fullName}</div>
+                                )}
+                                {gene.geneData.synonyms && gene.geneData.synonyms.length > 1 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {gene.geneData.synonyms.slice(0, 3).map((syn: string, i: number) => (
+                                      <span key={i} className={`${i === 0 ? 'bg-blue-100 text-blue-800 font-medium dark:bg-blue-900/30 dark:text-blue-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'} inline-block px-1 py-0.5 rounded text-[10px]`}>{syn}</span>
+                                    ))}
+                                    {gene.geneData.synonyms.length > 3 && (
+                                      <span className="text-[10px] text-gray-500 dark:text-gray-400">+{gene.geneData.synonyms.length - 3}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 italic">Gene data not available</div>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-xs text-gray-500 italic">Gene data not available</div>
-                        )}
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : sideInfo.geneData ? (
-                  <div className="space-y-4">
-                    {sideInfo.geneData.fullName && (
-                      <div>
-                        <span className="font-medium text-gray-700">Description:</span>
-                        <div className="mt-1 text-xs text-gray-600 break-words italic">{sideInfo.geneData.fullName}</div>
-                      </div>
-                    )}
-                    {sideInfo.geneData.synonyms && sideInfo.geneData.synonyms.length > 1 && (
-                      <div>
-                        <span className="font-medium text-gray-700">Gene Synonyms:</span>
-                        <div className="mt-1 flex flex-wrap gap-1">
+                    </div>
+                  );
+                }
+                if (sideInfo.geneData) {
+                  return (
+                    <div className="space-y-3">
+                      {sideInfo.geneData.fullName && (
+                        <div className="text-xs text-gray-600 dark:text-gray-300 break-words italic">{sideInfo.geneData.fullName}</div>
+                      )}
+                      {sideInfo.geneData.synonyms && sideInfo.geneData.synonyms.length > 1 && (
+                        <div className="flex flex-wrap gap-1">
                           {sideInfo.geneData.synonyms.map((synonym: string, i: number) => (
-                            <span key={i} className={`${i === 0 ? 'bg-blue-100 text-blue-800 font-medium' : 'bg-gray-100 text-gray-700'} inline-block px-2 py-1 rounded text-xs`}>{synonym}</span>
+                            <span key={i} className={`${i === 0 ? 'bg-blue-100 text-blue-800 font-medium dark:bg-blue-900/30 dark:text-blue-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'} inline-block px-2 py-1 rounded text-xs`}>{synonym}</span>
                           ))}
                         </div>
-                      </div>
-                    )}
-                    {(sideInfo.geneData.uniprotId || sideInfo.geneData.ensemblId || sideInfo.geneData.omimId || sideInfo.geneData.ncbiGeneId) && (
-                      <div>
-                        <span className="font-medium text-gray-700">Database IDs:</span>
-                        <div className="mt-2 text-sm space-y-1">
+                      )}
+                      {(sideInfo.geneData.uniprotId || sideInfo.geneData.ensemblId || sideInfo.geneData.omimId || sideInfo.geneData.ncbiGeneId) && (
+                        <div className="grid grid-cols-2 gap-3 text-xs">
                           {sideInfo.geneData.uniprotId && (
-                            <div className="flex justify-between items-center"><span className="text-gray-600">UniProt:</span><a href={`https://www.uniprot.org/uniprot/${sideInfo.geneData.uniprotId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-green-600 hover:underline bg-green-50 px-2 py-1 rounded text-xs">{sideInfo.geneData.uniprotId}</a></div>
+                            <div className="flex items-center justify-between"><span className="text-gray-600 dark:text-gray-300">UniProt:</span><a href={`https://www.uniprot.org/uniprot/${sideInfo.geneData.uniprotId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-green-600 hover:underline bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">{sideInfo.geneData.uniprotId}</a></div>
                           )}
                           {sideInfo.geneData.ensemblId && (
-                            <div className="flex justify-between items-center"><span className="text-gray-600">Ensembl:</span><a href={`https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${sideInfo.geneData.ensemblId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded text-xs">{sideInfo.geneData.ensemblId}</a></div>
+                            <div className="flex items-center justify-between"><span className="text-gray-600 dark:text-gray-300">Ensembl:</span><a href={`https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${sideInfo.geneData.ensemblId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">{sideInfo.geneData.ensemblId}</a></div>
                           )}
                           {sideInfo.geneData.omimId && (
-                            <div className="flex justify-between items-center"><span className="text-gray-600">OMIM:</span><a href={`https://omim.org/entry/${sideInfo.geneData.omimId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-purple-600 hover:underline bg-purple-50 px-2 py-1 rounded text-xs">{sideInfo.geneData.omimId}</a></div>
+                            <div className="flex items-center justify-between"><span className="text-gray-600 dark:text-gray-300">OMIM:</span><a href={`https://omim.org/entry/${sideInfo.geneData.omimId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-purple-600 hover:underline bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded">{sideInfo.geneData.omimId}</a></div>
                           )}
                           {sideInfo.geneData.ncbiGeneId && (
-                            <div className="flex justify-between items-center"><span className="text-gray-600">NCBI Gene:</span><a href={`https://www.ncbi.nlm.nih.gov/gene/${sideInfo.geneData.ncbiGeneId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-orange-600 hover:underline bg-orange-50 px-2 py-1 rounded text-xs">{sideInfo.geneData.ncbiGeneId}</a></div>
+                            <div className="flex items-center justify-between"><span className="text-gray-600 dark:text-gray-300">NCBI Gene:</span><a href={`https://www.ncbi.nlm.nih.gov/gene/${sideInfo.geneData.ncbiGeneId}`} target="_blank" rel="noopener noreferrer" className="font-mono text-orange-600 hover:underline bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded">{sideInfo.geneData.ncbiGeneId}</a></div>
                           )}
                         </div>
+                      )}
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
+                        <span className="font-medium">Graphics:</span>
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 grid grid-cols-3 gap-2">
+                          <div>Position: ({sideInfo.x}, {sideInfo.y})</div>
+                          <div>Size: {sideInfo.w} × {sideInfo.h} px</div>
+                          <div>Entry ID: {sideInfo.id}</div>
+                        </div>
                       </div>
-                    )}
+                    </div>
+                  );
+                }
+              }
+              if (sideInfo.type === "group" && sideInfo.components) {
+                return (
+                  <div className="grid grid-cols-2 gap-2">
+                    <span className="font-medium">Components:</span>
+                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">{sideInfo.components.length} member(s): {sideInfo.components.join(", ")}</div>
                   </div>
-                ) : null}
-                <div className="border-t pt-3">
-                  <span className="font-medium text-gray-700">Graphics:</span>
-                  <div className="mt-1 text-xs text-gray-600">
-                    <div>Position: ({sideInfo.x}, {sideInfo.y})</div>
-                    <div>Size: {sideInfo.w} × {sideInfo.h} px</div>
-                    <div>Entry ID: {sideInfo.id}</div>
+                );
+              }
+              if (sideInfo.rawLabel && sideInfo.rawLabel !== sideInfo.label) {
+                return (
+                  <div className="text-xs">
+                    <span className="font-medium">Full name:</span>
+                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 break-words">{sideInfo.rawLabel}</div>
                   </div>
-                </div>
-              </div>
-            ) : sideInfo.type === "group" && sideInfo.components ? (
-              <div>
-                <span className="font-medium text-gray-700">Components:</span>
-                <div className="mt-1 text-xs text-gray-600">{sideInfo.components.length} member(s): {sideInfo.components.join(", ")}</div>
-              </div>
-            ) : sideInfo.rawLabel && sideInfo.rawLabel !== sideInfo.label ? (
-              <div>
-                <span className="font-medium text-gray-700">Full name:</span>
-                <div className="mt-1 text-xs text-gray-600 break-words">{sideInfo.rawLabel}</div>
-              </div>
-            ) : null}
+                );
+              }
+              return null;
+            })()}
           </div>
         </div>
       )}

@@ -1,19 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import KeggPathwayViewer from "@/components/KeggPathwayViewer";
+import PathwayNeighborGraph from "@/components/PathwayNeighborGraph";
 
 export default function PathwaysPage() {
   const [pathway, setPathway] = useState("hsa04150");
   const [pathwayInput, setPathwayInput] = useState(pathway);
   const [showLabels, setShowLabels] = useState(true);
+  const [proteinIds, setProteinIds] = useState<string[]>([]);
+  const [proteinSymbols, setProteinSymbols] = useState<string[]>([]);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
 
-  const sampleOverlay: Record<string, number> = {
+  const sampleOverlay = useMemo<Record<string, number>>(() => ({
     "78|79": -0.8,
     "81|82": 0.9,
     "83|84": 0.5,
     "85|86": -0.3,
-  };
+  }), []);
 
   return (
     <div className="w-full h-full overflow-auto p-6 space-y-6 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -63,8 +67,18 @@ export default function PathwaysPage() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <KeggPathwayViewer pathwayId={pathway} edgeOverlay={sampleOverlay} showNodeLabels={showLabels} />
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-0">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+          <div className="border-r border-gray-200 dark:border-gray-700 p-6">
+            <KeggPathwayViewer pathwayId={pathway} edgeOverlay={sampleOverlay} showNodeLabels={showLabels} onProteinSet={({geneIds, symbols}) => { setProteinIds(geneIds); setProteinSymbols(symbols); }} selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => setSelectedSymbols(syms)} />
+          </div>
+          <div className="p-6">
+            <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-200">Proteins + neighbors</h3>
+            <div className="h-[720px] rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <PathwayNeighborGraph proteinSymbols={proteinSymbols} className="w-full h-full" selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => setSelectedSymbols(syms)} />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
