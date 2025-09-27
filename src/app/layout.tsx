@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -25,9 +26,26 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased w-screen h-screen overflow-hidden`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
       >
-        <div className="w-screen h-screen">{children}</div>
+        <div className="min-h-screen flex flex-col">
+          <header className="sticky top-0 z-20 bg-gray-900 text-gray-100 border-b border-gray-800">
+            <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-12 flex items-center justify-between">
+              <div className="flex items-center gap-6 text-sm">
+                <Link href="/" className="font-semibold hover:text-white">
+                  Graph
+                </Link>
+                <Link href="/locality" className="hover:text-white">
+                  Locality
+                </Link>
+                <Link href="/pathways" className="hover:text-white">
+                  Pathways
+                </Link>
+              </div>
+            </nav>
+          </header>
+          <main className="relative flex-1 overflow-hidden">{children}</main>
+        </div>
       </body>
     </html>
   );

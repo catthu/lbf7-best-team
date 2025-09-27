@@ -22,7 +22,7 @@ function throttle<T extends unknown[]>(fn: (...args: T) => void, ms: number) {
   };
 }
 
-export default function GraphViewer() {
+export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'default' | 'locality' }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const sigmaRef = React.useRef<any>(null);
   const graphRef = React.useRef<Graph | null>(null);
@@ -76,7 +76,7 @@ export default function GraphViewer() {
   const showAllEdgesRef = React.useRef(showAllEdges);
   const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [viewMode, setViewMode] = React.useState<'default' | 'locality'>('default');
+  const [viewMode, setViewMode] = React.useState<'default' | 'locality'>(initialViewMode === 'locality' ? 'locality' : 'default');
   const geneAbortRef = React.useRef<AbortController | null>(null);
   const geneTimerRef = React.useRef<number | null>(null);
   const geneCacheRef = React.useRef<Record<string, {symbol?: string; name?: string; summary?: string; t: number}>>({});
@@ -1855,14 +1855,6 @@ export default function GraphViewer() {
             </div>
           )}
         </div>
-        <button
-          onClick={() => setViewMode(viewMode === 'locality' ? 'default' : 'locality')}
-          className="border border-gray-700 rounded px-2 py-1 text-sm bg-gray-900/70 hover:bg-gray-900"
-          aria-label="Toggle locality view"
-          title={viewMode === 'locality' ? 'Switch to graph view' : 'Switch to locality view'}
-        >
-          {viewMode === 'locality' ? 'Graph view' : 'Locality view'}
-        </button>
       </div>
       <div ref={containerRef} className="absolute inset-0" />
       <canvas ref={fallbackCanvasRef} className="absolute inset-0" style={{display: "none"}} />
