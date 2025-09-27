@@ -75,6 +75,37 @@ export default function GraphViewer() {
   const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
   const geneAbortRef = React.useRef<AbortController | null>(null);
   const geneTimerRef = React.useRef<number | null>(null);
+  const geneCacheRef = React.useRef<Record<string, {symbol?: string; name?: string; summary?: string; t: number}>>({});
+  const GENE_CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
+
+  function normalizeGeneKey(q: string) {
+    return (q || '').trim().toLowerCase();
+  }
+
+  function getGeneFromCache(q: string) {
+    const key = normalizeGeneKey(q);
+    const now = Date.now();
+    const mem = geneCacheRef.current[key];
+    if (mem && now - mem.t < GENE_CACHE_TTL_MS) return {symbol: mem.symbol, name: mem.name, summary: mem.summary};
+    try {
+      const raw = localStorage.getItem(`__geneinfo:${key}`);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj.t === 'number' && now - obj.t < GENE_CACHE_TTL_MS) {
+          geneCacheRef.current[key] = obj;
+          return {symbol: obj.symbol, name: obj.name, summary: obj.summary};
+        }
+      }
+    } catch {}
+    return null;
+  }
+
+  function saveGeneToCache(q: string, data: {symbol?: string; name?: string; summary?: string}) {
+    const key = normalizeGeneKey(q);
+    const obj = {symbol: data.symbol, name: data.name, summary: data.summary, t: Date.now()};
+    geneCacheRef.current[key] = obj;
+    try { localStorage.setItem(`__geneinfo:${key}`, JSON.stringify(obj)); } catch {}
+  }
 
   async function fetchGeneSummary(query: string) {
     try {
@@ -82,6 +113,8 @@ export default function GraphViewer() {
       const ac = new AbortController();
       geneAbortRef.current = ac;
       const q = encodeURIComponent(query);
+      const cached = getGeneFromCache(query);
+      if (cached) { setGeneInfo(cached); return; }
       // Try MyGene.info first (human)
       const url = `https://mygene.info/v3/query?q=${q}&species=human&fields=symbol,name,summary&size=5`;
       const res = await fetch(url, {signal: ac.signal});
@@ -97,7 +130,9 @@ export default function GraphViewer() {
       }
       if (!best && hits.length) best = hits[0];
       if (best) {
-        setGeneInfo({symbol: best.symbol, name: best.name, summary: best.summary});
+        const info = {symbol: best.symbol as string | undefined, name: best.name as string | undefined, summary: best.summary as string | undefined};
+        setGeneInfo(info);
+        saveGeneToCache(query, info);
         return;
       }
       // Fallback: Uniprot function comment (simple)
@@ -111,7 +146,9 @@ export default function GraphViewer() {
           const funcs = item.comments.filter((c: any) => (c && c.type) ? c.type === 'FUNCTION' : false);
           if (funcs && funcs[0] && funcs[0].texts && funcs[0].texts[0]) summary = funcs[0].texts[0].value || '';
         }
-        setGeneInfo({symbol: query, name: query, summary: summary || undefined});
+        const info = {symbol: query, name: query, summary: summary || undefined};
+        setGeneInfo(info);
+        saveGeneToCache(query, info);
       }
     } catch (_e) {
       // ignore aborts
