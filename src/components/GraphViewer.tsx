@@ -72,6 +72,51 @@ export default function GraphViewer() {
   const [confidence, setConfidence] = React.useState(0);
   const confidenceRef = React.useRef(confidence);
   const [minConfidence, setMinConfidence] = React.useState(0);
+  const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
+  const geneAbortRef = React.useRef<AbortController | null>(null);
+  const geneTimerRef = React.useRef<number | null>(null);
+
+  async function fetchGeneSummary(query: string) {
+    try {
+      if (geneAbortRef.current) geneAbortRef.current.abort();
+      const ac = new AbortController();
+      geneAbortRef.current = ac;
+      const q = encodeURIComponent(query);
+      // Try MyGene.info first (human)
+      const url = `https://mygene.info/v3/query?q=${q}&species=human&fields=symbol,name,summary&size=5`;
+      const res = await fetch(url, {signal: ac.signal});
+      if (!res.ok) throw new Error(`mygene ${res.status}`);
+      const data = await res.json();
+      const hits = (data && data.hits) || [];
+      let best = null as any;
+      const qLower = query.toLowerCase();
+      for (const h of hits) {
+        const sym = (h.symbol || '').toLowerCase();
+        const nm = (h.name || '').toLowerCase();
+        if (sym === qLower || nm === qLower) { best = h; break; }
+      }
+      if (!best && hits.length) best = hits[0];
+      if (best) {
+        setGeneInfo({symbol: best.symbol, name: best.name, summary: best.summary});
+        return;
+      }
+      // Fallback: Uniprot function comment (simple)
+      const url2 = `https://rest.uniprot.org/uniprotkb/search?query=gene:${q}+AND+organism_id:9606&fields=comment(FUNCTION),genes,organism_name&format=json&size=1`;
+      const r2 = await fetch(url2, {signal: ac.signal});
+      if (r2.ok) {
+        const j = await r2.json();
+        const item = (j && j.results && j.results[0]) || null;
+        let summary = '';
+        if (item && item.comments) {
+          const funcs = item.comments.filter((c: any) => (c && c.type) ? c.type === 'FUNCTION' : false);
+          if (funcs && funcs[0] && funcs[0].texts && funcs[0].texts[0]) summary = funcs[0].texts[0].value || '';
+        }
+        setGeneInfo({symbol: query, name: query, summary: summary || undefined});
+      }
+    } catch (_e) {
+      // ignore aborts
+    }
+  }
 
   function recomputeFocusedInfoImmediate(nodeId: string) {
     const g = graphRef.current;
@@ -1016,6 +1061,9 @@ export default function GraphViewer() {
         s.on("clickNode", ({node}) => {
           if (defocusTimerRef.current) { window.clearTimeout(defocusTimerRef.current); defocusTimerRef.current = null; }
           setHovered(node);
+          const nm = (g.getNodeAttribute(node, 'name') as string) || node;
+          if (geneTimerRef.current) { window.clearTimeout(geneTimerRef.current); geneTimerRef.current = null; }
+          geneTimerRef.current = window.setTimeout(() => fetchGeneSummary(nm), 150);
         });
         // Click empty stage: if clicking on a visible label badge, treat as clicking that node; otherwise defocus
         s.on("clickStage", (evt: any) => {
@@ -1059,8 +1107,15 @@ export default function GraphViewer() {
           setHovered(undefined);
         });
         // Hover preview handlers (no camera movement)
-        s.on("enterNode", ({node}) => previewHover(node));
-        s.on("leaveNode", () => previewHover(undefined));
+        s.on("enterNode", ({node}) => {
+          previewHover(node);
+          if (!focusedNodeRef.current) {
+            const nm = (g.getNodeAttribute(node, 'name') as string) || node;
+            if (geneTimerRef.current) { window.clearTimeout(geneTimerRef.current); geneTimerRef.current = null; }
+            geneTimerRef.current = window.setTimeout(() => fetchGeneSummary(nm), 250);
+          }
+        });
+        s.on("leaveNode", () => { previewHover(undefined); if (!focusedNodeRef.current) setGeneInfo(null); });
 
           sigmaRef.current = s;
         } catch (err) {
@@ -1439,6 +1494,17 @@ export default function GraphViewer() {
               if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
             }}
         />
+        {geneInfo && (
+          <div className="mt-1 rounded-md border border-gray-700 bg-gray-900/70 p-2">
+            <div className="text-xs text-gray-300">
+              <span className="font-semibold">{geneInfo.symbol || geneInfo.name}</span>
+              {geneInfo.name && geneInfo.symbol && <span className="ml-1">— {geneInfo.name}</span>}
+            </div>
+            {geneInfo.summary && (
+              <div className="mt-1 text-xs text-gray-200 leading-snug line-clamp-4">{geneInfo.summary}</div>
+            )}
+          </div>
+        )}
       </div>
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
         <div className="relative">
