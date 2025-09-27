@@ -1,0 +1,1126 @@
+"use client";
+
+import React from "react";
+import Graph from "graphology";
+
+type GraphData = {
+  nodes: Array<{id: string; label?: string; x: number; y: number; size?: number; degree?: number; community?: number | null; allDBs?: string[]; hasAllDBsNone?: boolean}>;
+  edges: Array<{id: string; source: string; target: string; weight?: number; allDBs?: string}>;
+  adjacency: Record<string, string[]>;
+  clusters: Array<{id: string; label?: string; x: number; y: number; size?: number; community: number; count: number}>;
+  meta?: {order: number; size: number};
+};
+
+function throttle<T extends unknown[]>(fn: (...args: T) => void, ms: number) {
+  let last = 0;
+  return (...args: T) => {
+    const now = performance.now();
+    if (now - last >= ms) {
+      last = now;
+      fn(...args);
+    }
+  };
+}
+
+export default function GraphViewer() {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const sigmaRef = React.useRef<any>(null);
+  const graphRef = React.useRef<Graph | null>(null);
+  const adjacencyRef = React.useRef<GraphData["adjacency"]>({});
+  const fallbackCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const fallbackCtxRef = React.useRef<CanvasRenderingContext2D | null>(null);
+  const fallbackNodesRef = React.useRef<Array<{id: string; x: number; y: number; size: number; degree: number; name: string}>>([]);
+  const idToIndexRef = React.useRef<Record<string, number>>({});
+  const viewRef = React.useRef({scale: 1, tx: 0, ty: 0});
+  const focusedNodeRef = React.useRef<string | null>(null);
+  const prevCamStateRef = React.useRef<any>(null);
+  const defocusTimerRef = React.useRef<number | null>(null);
+  const isAnimatingRef = React.useRef<boolean>(false);
+  const isClampingRef = React.useRef<boolean>(false);
+  const setHoveredRef = React.useRef<((node?: string) => void) | undefined>(undefined);
+  const nameIndexRef = React.useRef<Array<{id: string; name: string; nameLower: string}>>([]);
+  const nodesBlueSetRef = React.useRef<Set<string>>(new Set());
+  const edgeAllDBsRef = React.useRef<Record<string, string>>({});
+  const nodesBlueCountsRef = React.useRef<Record<string, number>>({});
+  const maxBlueCountRef = React.useRef<number>(0);
+  const [totals, setTotals] = React.useState<{nodes: number; edges: number; blueEdges: number}>({nodes: 0, edges: 0, blueEdges: 0});
+  const [focusedInfo, setFocusedInfo] = React.useState<{id: string; name: string; degree: number; blue: number} | null>(null);
+
+  function getHeatColorForCount(count: number, alpha = 1): string {
+    // Blue-only gradient from light blue (low) to deep blue (high)
+    const maxC = Math.max(1, maxBlueCountRef.current);
+    const tBase = Math.max(0, Math.min(1, count / maxC));
+    const t = Math.max(0.12, tBase); // ensure visibility for low non-zero counts
+    const r = Math.round(147 + (29 - 147) * t);   // 147 -> 29
+    const g = Math.round(197 + (78 - 197) * t);   // 197 -> 78
+    const b = Math.round(253 + (216 - 253) * t);  // 253 -> 216
+    if (alpha >= 1) return `rgb(${r}, ${g}, ${b})`;
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
+  }
+
+  const [degreeThreshold, setDegreeThreshold] = React.useState(0);
+  const [showEdges, setShowEdges] = React.useState(true);
+  const clusterModeRef = React.useRef(false);
+  const showEdgesRef = React.useRef(showEdges);
+  const degreeThresholdRef = React.useRef(degreeThreshold);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchMatches, setSearchMatches] = React.useState<Array<{id: string; name: string}>>([]);
+
+  React.useEffect(() => {
+    showEdgesRef.current = showEdges;
+  }, [showEdges]);
+  React.useEffect(() => {
+    degreeThresholdRef.current = degreeThreshold;
+  }, [degreeThreshold]);
+
+  React.useEffect(() => {
+    let disposed = false;
+    function isWebGLAvailable(): boolean {
+      try {
+        const c = document.createElement("canvas");
+        return !!(c.getContext("webgl2") || c.getContext("webgl") || c.getContext("experimental-webgl" as any));
+      } catch {
+        return false;
+      }
+    }
+
+    function startCanvasFallback(data: GraphData) {
+      try {
+        const container = containerRef.current!;
+        const canvas = fallbackCanvasRef.current!;
+        container.style.display = "none";
+        canvas.style.display = "block";
+
+        function resizeCanvas() {
+          const rect = canvas.parentElement!.getBoundingClientRect();
+          const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+          canvas.width = Math.floor(rect.width * dpr);
+          canvas.height = Math.floor(rect.height * dpr);
+          canvas.style.width = `${Math.floor(rect.width)}px`;
+          canvas.style.height = `${Math.floor(rect.height)}px`;
+          const ctx = canvas.getContext("2d");
+          fallbackCtxRef.current = ctx;
+          if (!ctx) return;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        resizeCanvas();
+        const ctx = (fallbackCtxRef.current = canvas.getContext("2d"));
+        if (!ctx) return;
+
+        const nodes = data.nodes.map((n) => ({
+          id: n.id,
+          x: n.x,
+          y: n.y,
+          size: Math.max(1, n.size || 1),
+          degree: n.degree || 0,
+          name: n.label || n.id,
+        }));
+        fallbackNodesRef.current = nodes;
+        const idToIndex: Record<string, number> = {};
+        nodes.forEach((n, i) => (idToIndex[n.id] = i));
+        idToIndexRef.current = idToIndex;
+
+        function worldToScreen(p: {x: number; y: number}) {
+          const {scale, tx, ty} = viewRef.current;
+          return {x: p.x * scale + tx, y: p.y * scale + ty};
+        }
+        function screenToWorld(p: {x: number; y: number}) {
+          const {scale, tx, ty} = viewRef.current;
+          return {x: (p.x - tx) / scale, y: (p.y - ty) / scale};
+        }
+
+        function computeFit() {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const n of nodes) {
+            if (n.x < minX) minX = n.x;
+            if (n.y < minY) minY = n.y;
+            if (n.x > maxX) maxX = n.x;
+            if (n.y > maxY) maxY = n.y;
+          }
+          const rect = canvas.getBoundingClientRect();
+          const width = rect.width;
+          const height = rect.height;
+          const dx = maxX - minX || 1;
+          const dy = maxY - minY || 1;
+          const padding = 20;
+          const sx = (width - 2 * padding) / dx;
+          const sy = (height - 2 * padding) / dy;
+          const scale = Math.min(sx, sy);
+          const tx = padding - minX * scale + (width - (dx * scale + 2 * padding)) / 2;
+          const ty = padding - minY * scale + (height - (dy * scale + 2 * padding)) / 2;
+          viewRef.current = {scale, tx, ty};
+        }
+
+        computeFit();
+
+        // Once the user interacts (zoom/pan/hover-zoom), stop auto-fitting on resize
+        let hasInteracted = false;
+
+        let hovered: string | null = null;
+        let isPanning = false;
+        let panStart: {x: number; y: number} | null = null;
+        let viewStart = {scale: 1, tx: 0, ty: 0};
+
+        const draw = () => {
+          const ctx2 = fallbackCtxRef.current!;
+          const rect = canvas.getBoundingClientRect();
+          ctx2.clearRect(0, 0, rect.width, rect.height);
+          if (hovered && showEdgesRef.current) {
+            const src = nodes[idToIndexRef.current[hovered]];
+            if (src) {
+              ctx2.strokeStyle = "rgba(150,150,150,0.6)";
+              ctx2.lineWidth = 1;
+              const srcS = worldToScreen(src);
+              for (const nb of adjacencyRef.current[hovered] || []) {
+                const t = nodes[idToIndexRef.current[nb]];
+                if (!t) continue;
+                const thr = degreeThresholdRef.current;
+                if (thr > 0 && t.degree < thr) continue;
+                const tS = worldToScreen(t);
+                ctx2.beginPath();
+                ctx2.moveTo(srcS.x, srcS.y);
+                ctx2.lineTo(tS.x, tS.y);
+                ctx2.stroke();
+              }
+            }
+          }
+          for (const n of nodes) {
+            const thr = degreeThresholdRef.current;
+            if (thr > 0 && n.degree < thr) continue;
+            const {x, y} = worldToScreen(n);
+            const r = Math.max(1, Math.sqrt(Math.max(1, n.degree)));
+            const isNeighbor = hovered ? (n.id === hovered || (adjacencyRef.current[hovered] || []).includes(n.id)) : true;
+            ctx2.fillStyle = isNeighbor ? "#9aa" : "#bbb";
+            ctx2.beginPath();
+            ctx2.arc(x, y, r, 0, Math.PI * 2);
+            ctx2.fill();
+          }
+          if (hovered) {
+            const h = nodes[idToIndexRef.current[hovered]];
+            if (h) {
+              const p = worldToScreen(h);
+              ctx2.fillStyle = "#eee";
+              ctx2.font = "12px system-ui, -apple-system, sans-serif";
+              ctx2.fillText(h.name, p.x + 8, p.y - 8);
+            }
+          }
+        };
+
+        const onMove = throttle((ev: MouseEvent) => {
+          const rect = canvas.getBoundingClientRect();
+          const x = ev.clientX - rect.left;
+          const y = ev.clientY - rect.top;
+          if (isPanning && panStart) {
+            const dx = x - panStart.x;
+            const dy = y - panStart.y;
+            viewRef.current.tx = viewStart.tx + dx;
+            viewRef.current.ty = viewStart.ty + dy;
+            draw();
+            return;
+          }
+          const world = screenToWorld({x, y});
+          let best: {id: string; d2: number} | null = null;
+          for (const n of nodes) {
+            const dx = n.x - world.x;
+            const dy = n.y - world.y;
+            const d2 = dx * dx + dy * dy;
+            if (!best || d2 < best.d2) best = {id: n.id, d2};
+          }
+          const picked = best && best.d2 < 25 / (viewRef.current.scale * viewRef.current.scale) ? best.id : null;
+          if (picked !== hovered) {
+            hovered = picked;
+            draw();
+          }
+        }, 24);
+
+        const onLeave = () => { hovered = null; draw(); };
+
+        const onWheel = (ev: WheelEvent) => {
+          ev.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const x = ev.clientX - rect.left;
+          const y = ev.clientY - rect.top;
+          const worldBefore = screenToWorld({x, y});
+          const factor = Math.exp(-ev.deltaY * 0.001);
+          const newScale = Math.min(4, Math.max(0.1, viewRef.current.scale * factor));
+          viewRef.current.scale = newScale;
+          const screenAfter = {x: worldBefore.x * newScale + viewRef.current.tx, y: worldBefore.y * newScale + viewRef.current.ty};
+          viewRef.current.tx += x - screenAfter.x;
+          viewRef.current.ty += y - screenAfter.y;
+          hasInteracted = true;
+          draw();
+        };
+
+        const onDown = (ev: MouseEvent) => {
+          const rect = canvas.getBoundingClientRect();
+          panStart = {x: ev.clientX - rect.left, y: ev.clientY - rect.top};
+          viewStart = {...viewRef.current};
+          isPanning = true;
+          hasInteracted = true;
+        };
+        const onUp = () => { isPanning = false; };
+
+        canvas.addEventListener("mousemove", onMove);
+        canvas.addEventListener("mouseleave", onLeave);
+        canvas.addEventListener("wheel", onWheel, {passive: false});
+        canvas.addEventListener("mousedown", onDown);
+        window.addEventListener("mouseup", onUp);
+        const ro = new ResizeObserver(() => {
+          resizeCanvas();
+          if (!hasInteracted) computeFit();
+          draw();
+        });
+        ro.observe(canvas.parentElement!);
+        draw();
+        (canvas as any)._cleanup = () => {
+          canvas.removeEventListener("mousemove", onMove);
+          canvas.removeEventListener("mouseleave", onLeave);
+          canvas.removeEventListener("wheel", onWheel as any);
+          canvas.removeEventListener("mousedown", onDown);
+          window.removeEventListener("mouseup", onUp);
+          ro.disconnect();
+        };
+      } catch (e) {
+        console.warn("Canvas fallback failed", e);
+      }
+    }
+    async function waitForNonZeroSize(maxFrames = 180) {
+      let frames = 0;
+      while (!disposed && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        if (rect.width >= 10 && rect.height >= 10) break;
+        if (frames++ >= maxFrames) break;
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+    }
+
+    async function init() {
+      // Ensure the element has been committed and has a non-zero size
+      await new Promise((r) => requestAnimationFrame(r));
+      await waitForNonZeroSize();
+      // Give the layout one more tick to settle before reading sizes
+      await new Promise((r) => setTimeout(r, 32));
+      if (disposed) return;
+      if (!containerRef.current) return;
+      const res = await fetch("/graph.json", {cache: "no-store"});
+      const data: GraphData = await res.json();
+      if (disposed) return;
+
+      adjacencyRef.current = data.adjacency;
+      // Compute totals for info box
+      const blueEdgesCount = (data.edges || []).reduce((acc, e) => acc + ((e.allDBs || '').trim().toLowerCase() === 'none' ? 1 : 0), 0);
+      setTotals({nodes: (data.nodes || []).length, edges: (data.edges || []).length, blueEdges: blueEdgesCount});
+
+      const g = new Graph();
+      // Add nodes
+      for (const n of data.nodes) {
+        g.addNode(n.id, {
+          // Store original label as name; keep label empty by default for LOD
+          name: n.label || n.id,
+          label: "",
+          x: n.x,
+          y: n.y,
+          size: n.size ?? 1,
+          baseSize: n.size ?? 1,
+          community: n.community ?? -1,
+          degree: n.degree ?? 0,
+        });
+      }
+      // Build simple name index for search
+      nameIndexRef.current = data.nodes.map((n) => {
+        const nm = (n.label || n.id) + "";
+        return {id: n.id, name: nm, nameLower: nm.toLowerCase()};
+      });
+      // Add cluster meta-nodes (hidden by default)
+      for (const c of data.clusters) {
+        const id = `cluster:${c.id}`;
+        if (!g.hasNode(id)) {
+          g.addNode(id, {
+            name: c.label || id,
+            label: "",
+            x: c.x,
+            y: c.y,
+            size: c.size ?? Math.max(2, Math.sqrt(c.count)),
+            isCluster: 1,
+            community: c.community,
+            hidden: true,
+          });
+        }
+      }
+      // Add edges (we will toggle their rendering later)
+      for (const e of data.edges) {
+        const id = e.id || `${e.source}-${e.target}`;
+        if (!g.hasEdge(id)) g.addEdgeWithKey(id, e.source, e.target, {weight: e.weight ?? 1, allDBs: e.allDBs || ''});
+        edgeAllDBsRef.current[id] = e.allDBs || '';
+      }
+      // Hide all edges by default; they'll appear on hover
+      g.forEachEdge((edge) => g.setEdgeAttribute(edge, "hidden", true));
+      // Precompute nodes involved in 'none' edges and counts for heatmap
+      const nodesBlue = new Set<string>();
+      const counts: Record<string, number> = {};
+      g.forEachEdge((e, attrs, sId, tId) => {
+        const adb = (attrs as any).allDBs || '';
+        if (String(adb).trim().toLowerCase() === 'none') {
+          nodesBlue.add(sId); nodesBlue.add(tId);
+          counts[sId] = (counts[sId] || 0) + 1;
+          counts[tId] = (counts[tId] || 0) + 1;
+        }
+      });
+      nodesBlueSetRef.current = nodesBlue;
+      nodesBlueCountsRef.current = counts;
+      maxBlueCountRef.current = Object.values(counts).reduce((m, v) => Math.max(m, v), 0);
+      // Set initial node colors according to heat map
+      g.forEachNode((n) => {
+        if (nodesBlue.has(n)) {
+          const c = counts[n] || 0;
+          g.setNodeAttribute(n, 'color', getHeatColorForCount(c));
+        }
+      });
+
+      graphRef.current = g;
+
+      if (containerRef.current) {
+        // If WebGL is unavailable, go straight to Canvas fallback and avoid logging errors
+        if (!isWebGLAvailable()) {
+          console.warn("WebGL unavailable – using Canvas fallback");
+          startCanvasFallback(data);
+          return;
+        }
+        try {
+          // Patch getContext to gracefully fallback from webgl2 -> webgl on Chrome
+          const originalGetContext = HTMLCanvasElement.prototype.getContext;
+          if (!(originalGetContext as any)._patchedForSigma) {
+            const patched = function(this: HTMLCanvasElement, type: string, attrs?: any) {
+              let ctx: any = originalGetContext.call(this, type as any, attrs);
+              if (!ctx && type === "webgl2") ctx = originalGetContext.call(this, "webgl" as any, attrs);
+              return ctx;
+            } as typeof originalGetContext;
+            (patched as any)._patchedForSigma = true;
+            HTMLCanvasElement.prototype.getContext = patched;
+          }
+
+          const {default: Sigma} = await import("sigma");
+          const container = containerRef.current;
+          const rect = container.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            container.style.width = `${Math.floor(rect.width)}px`;
+            container.style.height = `${Math.floor(rect.height)}px`;
+          }
+          container.style.overflow = "hidden";
+          container.style.position = container.style.position || "absolute";
+          const s = new Sigma(g, container, {
+            renderLabels: true,
+            labelRenderedSizeThreshold: 999999,
+            minCameraRatio: 0.01,
+            maxCameraRatio: 10,
+          });
+
+          // Debug logging toggle (default on). To disable: set window.__graphDebug = false in console.
+          const isDebug = () => (window as any).__graphDebug !== false;
+          const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+          const getGraphBounds = () => {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            g.forEachNode((n, attrs) => {
+              if (attrs == null) return;
+              // Ignore hidden clusters for bounds stability
+              if (attrs.isCluster) return;
+              const x = typeof attrs.x === "number" ? attrs.x : 0;
+              const y = typeof attrs.y === "number" ? attrs.y : 0;
+              if (x < minX) minX = x;
+              if (y < minY) minY = y;
+              if (x > maxX) maxX = x;
+              if (y > maxY) maxY = y;
+            });
+            if (minX === Infinity) return {minX: 0, minY: 0, maxX: 0, maxY: 0};
+            return {minX, minY, maxX, maxY};
+          };
+
+          // Resize observer to keep canvas in sync with container size
+          const ro = new ResizeObserver(() => {
+            const rect = container.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) s.refresh();
+          });
+          ro.observe(container);
+          (s as any)._ro = ro;
+
+        // Level of Detail: control node sizes, cluster toggle, and edge visibility by zoom
+        let lastLOD = 0;
+        const updateLOD = () => {
+          if ((window as any).__suspendLOD) return;
+          const ratio = s.getCamera().getState().ratio;
+          const drawEdges = showEdgesRef.current && ratio < 1.5;
+          try {
+            // Sigma v3 uses boolean setting key 'renderEdges'; TS types may not include it in our env
+            (s as any).setSetting("renderEdges", drawEdges);
+          } catch {}
+
+          // Toggle cluster mode when zoomed out a lot
+          const clusterMode = ratio > 1.2; // higher ratio => more zoomed out
+          if (clusterMode !== clusterModeRef.current) {
+            clusterModeRef.current = clusterMode;
+            g.forEachNode((n, attrs) => {
+              const isCluster = !!attrs.isCluster;
+              if (clusterMode) {
+                // Show clusters, hide regular nodes
+                g.setNodeAttribute(n, "hidden", !isCluster);
+              } else {
+                // Hide clusters, show regular nodes (respect degree filter separately)
+                if (isCluster) g.setNodeAttribute(n, "hidden", true);
+                else {
+                  const deg = attrs.degree || 0;
+                  g.setNodeAttribute(n, "hidden", deg < degreeThresholdRef.current);
+                }
+              }
+            });
+          }
+
+          // Throttle size recomputation
+          if (Math.abs(ratio - lastLOD) > 0.08) {
+            lastLOD = ratio;
+            const baseSize = ratio > 1 ? 1 : Math.max(0.4, ratio);
+            g.forEachNode((n, attrs) => {
+              if (attrs.isCluster) return;
+              const deg = attrs.degree || 0;
+              const size = Math.max(0.5, Math.sqrt(Math.max(1, deg)) * baseSize);
+              g.setNodeAttribute(n, "size", size);
+              g.setNodeAttribute(n, "baseSize", size);
+            });
+          }
+        };
+
+        const clampCameraToGraph = () => {
+          if (isClampingRef.current) return;
+          try {
+            const cam = s.getCamera();
+            const st = cam.getState();
+            // In Sigma's normalized camera space, x and y are ~[0,1] and ratio indicates the visible span.
+            // So clamp to [ratio/2, 1 - ratio/2] without mixing pixels.
+            const mx = st.ratio / 2;
+            const my = st.ratio / 2;
+            let cx = st.x;
+            let cy = st.y;
+            const nx = clamp(st.x, mx, 1 - mx);
+            const ny = clamp(st.y, my, 1 - my);
+            if (Math.abs(nx - st.x) > 1e-3 || Math.abs(ny - st.y) > 1e-3) {
+              if (isDebug()) console.log("[Graph] cam clamp", {from: st, to: {x: nx, y: ny}, margins: {mx, my}});
+              cx = nx; cy = ny;
+              isClampingRef.current = true;
+              cam.setState({x: cx, y: cy, ratio: st.ratio, angle: st.angle});
+              isClampingRef.current = false;
+            }
+          } catch {}
+        };
+
+        const onCamUpdate = () => {
+          // lightweight throttling
+          if ((onCamUpdate as any)._t && performance.now() - (onCamUpdate as any)._t < 120) return;
+          (onCamUpdate as any)._t = performance.now();
+          updateLOD();
+          clampCameraToGraph();
+          // Debug camera state occasionally
+          if (isDebug()) {
+            if (!(onCamUpdate as any)._lt || performance.now() - (onCamUpdate as any)._lt > 320) {
+              (onCamUpdate as any)._lt = performance.now();
+              try { console.log("[Graph] cam", s.getCamera().getState()); } catch {}
+            }
+          }
+        };
+        s.getCamera().on("updated", onCamUpdate);
+        updateLOD();
+
+        // Hover focus: zoom to node, show only neighbors, show neighbor edges
+        const setHovered = throttle((node?: string) => {
+          const neighbors = new Set<string>();
+          if (node) {
+            neighbors.add(node);
+            for (const nb of adjacencyRef.current[node] || []) neighbors.add(nb);
+          }
+
+          g.forEachNode((n) => {
+            const isCluster = !!g.getNodeAttribute(n, "isCluster");
+            if (isCluster) return; // ignore clusters in hover focus
+            const isNeighbor = node ? neighbors.has(n) : true;
+            g.setNodeAttribute(n, "highlighted", isNeighbor ? 1 : 0);
+            // Always keep blue nodes visible with heatmap intensity; dim non-neighbors
+            const isBlueNode = nodesBlueSetRef.current.has(n);
+            if (isBlueNode) {
+              const c = nodesBlueCountsRef.current[n] || 0;
+              const col = getHeatColorForCount(c, isNeighbor ? 1 : 0.6);
+              g.setNodeAttribute(n, "color", col);
+            } else {
+              g.setNodeAttribute(n, "color", isNeighbor ? undefined : "#bbb");
+            }
+            // Only show hovered node and neighbors; hide others
+            const hidden = node ? !isNeighbor : (degreeThresholdRef.current > 0 && (g.getNodeAttribute(n, "degree") || 0) < degreeThresholdRef.current);
+            g.setNodeAttribute(n, "hidden", clusterModeRef.current ? true : hidden);
+            // Show label only for hovered node
+            const name = g.getNodeAttribute(n, "name") || "";
+            const isHovered = node && n === node;
+            g.setNodeAttribute(n, "label", (isHovered || (node && isNeighbor)) ? name : "");
+            // Enlarge hovered + neighbors for readability
+            const baseSize = g.getNodeAttribute(n, "baseSize") || g.getNodeAttribute(n, "size") || 1;
+            const factor = isHovered ? 2.8 : (node && isNeighbor ? 1.9 : 1);
+            g.setNodeAttribute(n, "size", baseSize * factor);
+          });
+
+          // Draw only edges connected to hovered node when showEdges is on
+          if (showEdgesRef.current) {
+            g.forEachEdge((e, _attr, sId, tId) => {
+              const visible = node ? neighbors.has(sId) && neighbors.has(tId) : false;
+              const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
+              const isNone = adb === 'none';
+              g.setEdgeAttribute(e, "hidden", !visible);
+              if (visible) g.setEdgeAttribute(e, 'color', isNone ? '#3b82f6' : undefined);
+              else g.setEdgeAttribute(e, 'color', undefined);
+            });
+          } else {
+            g.forEachEdge((e) => g.setEdgeAttribute(e, "hidden", true));
+          }
+
+          // Camera focus
+          if (node) {
+            const cam = s.getCamera();
+            // Save previous cam state only if we are focusing a new node
+            if (focusedNodeRef.current !== node) {
+              if (!focusedNodeRef.current) prevCamStateRef.current = cam.getState();
+            }
+            focusedNodeRef.current = node;
+            // Update focused info (degree and blue-degree)
+            try {
+              const deg = typeof (g as any).degree === 'function' ? (g as any).degree(node) : (adjacencyRef.current[node] || []).length;
+              let blue = 0;
+              g.forEachEdge((e, attrs, sId, tId) => {
+                if (sId === node || tId === node) {
+                  const adb = (attrs as any).allDBs || '';
+                  if (String(adb).trim().toLowerCase() === 'none') blue += 1;
+                }
+              });
+              let nm = g.getNodeAttribute(node, 'name') as string | undefined;
+              if (!nm || !nm.trim()) {
+                const found = nameIndexRef.current.find((e) => e.id === node);
+                nm = (found && found.name) || (g.getNodeAttribute(node, 'label') as string) || node;
+              }
+              setFocusedInfo({id: node, name: nm, degree: deg, blue});
+            } catch {}
+            const x = g.getNodeAttribute(node, "x");
+            const y = g.getNodeAttribute(node, "y");
+            // Compute a relative zoom-in in normalized camera space and clamp within [ratio/2, 1-ratio/2]
+            const current = cam.getState();
+            const targetRatio = Math.max(0.25, Math.min(1, current.ratio * 0.65));
+            const {minX, minY, maxX, maxY} = getGraphBounds();
+            const nx = (x - minX) / Math.max(1e-9, (maxX - minX));
+            const ny = (y - minY) / Math.max(1e-9, (maxY - minY));
+            const mx = targetRatio / 2;
+            const my = targetRatio / 2;
+            const tx = clamp(nx, mx, 1 - mx);
+            const ty = clamp(ny, my, 1 - my);
+            const target = {x: tx, y: ty, ratio: targetRatio};
+            if (isDebug()) {
+              console.log("[Graph] focus", {node, nodePos: {x, y}, current, targetBefore: {x: nx, y: ny, ratio: targetRatio},
+                margins: {mx, my}, clamped: {x: tx, y: ty}});
+            }
+            // Avoid restarting the same animation while one is in progress
+            if (!isAnimatingRef.current && focusedNodeRef.current === node) {
+              try { 
+                (window as any).__suspendLOD = true;
+                isAnimatingRef.current = true;
+                (cam as any).animate(target, {duration: 500, easing: 'quadraticInOut'} as any);
+                window.setTimeout(() => { (window as any).__suspendLOD = false; isAnimatingRef.current = false; }, 520);
+              } catch {
+                cam.setState(target);
+                (window as any).__suspendLOD = false;
+                isAnimatingRef.current = false;
+              }
+            }
+          } else if (focusedNodeRef.current) {
+            // Defer defocus slightly to avoid flicker when camera moves node under cursor
+            if (defocusTimerRef.current) window.clearTimeout(defocusTimerRef.current);
+            defocusTimerRef.current = window.setTimeout(() => {
+              const cam = s.getCamera();
+              const st = prevCamStateRef.current || {ratio: 1};
+              try {
+                isAnimatingRef.current = true;
+                (cam as any).animate(st, {duration: 500, easing: 'quadraticInOut'} as any);
+                window.setTimeout(() => { isAnimatingRef.current = false; }, 520);
+              } catch { cam.setState(st); isAnimatingRef.current = false; }
+              focusedNodeRef.current = null;
+              setFocusedInfo(null);
+              // Restore nodes (respect degree filter)
+              g.forEachNode((n, attrs) => {
+                if (attrs.isCluster) return;
+                const deg = attrs.degree || 0;
+                g.setNodeAttribute(n, "hidden", degreeThresholdRef.current > 0 && deg < degreeThresholdRef.current);
+                g.setNodeAttribute(n, "label", "");
+                // Preserve heatmap blue after defocus
+                if (nodesBlueSetRef.current.has(n)) {
+                  const c = nodesBlueCountsRef.current[n] || 0;
+                  g.setNodeAttribute(n, "color", getHeatColorForCount(c));
+                } else {
+                  g.setNodeAttribute(n, "color", undefined);
+                }
+                g.setNodeAttribute(n, "highlighted", 0);
+                // restore size
+                const baseSize = g.getNodeAttribute(n, "baseSize") || g.getNodeAttribute(n, "size") || 1;
+                g.setNodeAttribute(n, "size", baseSize);
+              });
+              s.refresh();
+            }, 180);
+            return;
+          }
+
+          s.refresh();
+        }, 24);
+        setHoveredRef.current = (nodeId?: string) => setHovered(nodeId);
+
+        // Lightweight hover preview: show edges + label only, no zoom/pan/size changes
+        const previewHover = throttle((node?: string) => {
+          if (focusedNodeRef.current) return; // ignore hover when focused via click
+          // clear all labels first
+          g.forEachNode((n) => g.setNodeAttribute(n, "label", ""));
+          if (node) {
+            const name = g.getNodeAttribute(node, "name") || "";
+            g.setNodeAttribute(node, "label", name);
+          }
+          if (showEdgesRef.current) {
+            const nbSet = new Set<string>();
+            if (node) {
+              nbSet.add(node);
+              for (const nb of adjacencyRef.current[node] || []) nbSet.add(nb);
+            }
+            g.forEachEdge((e, _attr, sId, tId) => {
+              const vis = node ? nbSet.has(sId) && nbSet.has(tId) : false;
+              const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
+              const isNone = adb === 'none';
+              g.setEdgeAttribute(e, 'hidden', !vis);
+              if (vis) g.setEdgeAttribute(e, 'color', isNone ? '#3b82f6' : undefined);
+              else g.setEdgeAttribute(e, 'color', undefined);
+            });
+          } else {
+            g.forEachEdge((e) => g.setEdgeAttribute(e, 'hidden', true));
+          }
+          s.refresh();
+        }, 24);
+
+        // Click to focus node
+        s.on("clickNode", ({node}) => {
+          if (defocusTimerRef.current) { window.clearTimeout(defocusTimerRef.current); defocusTimerRef.current = null; }
+          setHovered(node);
+        });
+        // Click empty stage to defocus
+        s.on("clickStage", () => setHovered(undefined));
+        // Hover preview handlers (no camera movement)
+        s.on("enterNode", ({node}) => previewHover(node));
+        s.on("leaveNode", () => previewHover(undefined));
+
+          sigmaRef.current = s;
+        } catch (err) {
+          console.warn("Sigma WebGL init failed – using Canvas fallback", err);
+          // Fallback to simple Canvas2D renderer when WebGL is unavailable
+          try {
+            const container = containerRef.current!;
+            const canvas = fallbackCanvasRef.current!;
+            container.style.display = "none";
+            canvas.style.display = "block";
+
+            function resizeCanvas() {
+              const rect = canvas.parentElement!.getBoundingClientRect();
+              const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+              canvas.width = Math.floor(rect.width * dpr);
+              canvas.height = Math.floor(rect.height * dpr);
+              canvas.style.width = `${Math.floor(rect.width)}px`;
+              canvas.style.height = `${Math.floor(rect.height)}px`;
+              const ctx = canvas.getContext("2d");
+              fallbackCtxRef.current = ctx;
+              if (!ctx) return;
+              ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            resizeCanvas();
+            const ctx = (fallbackCtxRef.current = canvas.getContext("2d"));
+            if (!ctx) return;
+
+            // Prepare node arrays
+            const nodes = data.nodes.map((n) => ({
+              id: n.id,
+              x: n.x,
+              y: n.y,
+              size: Math.max(1, n.size || 1),
+              degree: n.degree || 0,
+              name: n.label || n.id,
+            }));
+            fallbackNodesRef.current = nodes;
+            const idToIndex: Record<string, number> = {};
+            nodes.forEach((n, i) => (idToIndex[n.id] = i));
+            idToIndexRef.current = idToIndex;
+
+            function computeFit() {
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const n of nodes) {
+                if (n.x < minX) minX = n.x;
+                if (n.y < minY) minY = n.y;
+                if (n.x > maxX) maxX = n.x;
+                if (n.y > maxY) maxY = n.y;
+              }
+              const rect = canvas.getBoundingClientRect();
+              const width = rect.width;
+              const height = rect.height;
+              const dx = maxX - minX || 1;
+              const dy = maxY - minY || 1;
+              const padding = 20;
+              const sx = (width - 2 * padding) / dx;
+              const sy = (height - 2 * padding) / dy;
+              const scale = Math.min(sx, sy);
+              const tx = padding - minX * scale + (width - (dx * scale + 2 * padding)) / 2;
+              const ty = padding - minY * scale + (height - (dy * scale + 2 * padding)) / 2;
+              viewRef.current = {scale, tx, ty};
+            }
+
+            computeFit();
+
+            // Once the user interacts (zoom/pan/hover-zoom), stop auto-fitting on resize
+            let hasInteracted = false;
+
+            let hovered: string | null = null;
+            let isPanning = false;
+            let panStart: {x: number; y: number} | null = null;
+            let viewStart = {scale: 1, tx: 0, ty: 0};
+
+            function worldToScreen(p: {x: number; y: number}) {
+              const {scale, tx, ty} = viewRef.current;
+              return {x: p.x * scale + tx, y: p.y * scale + ty};
+            }
+            function screenToWorld(p: {x: number; y: number}) {
+              const {scale, tx, ty} = viewRef.current;
+              return {x: (p.x - tx) / scale, y: (p.y - ty) / scale};
+            }
+
+            function draw() {
+              const ctx = fallbackCtxRef.current!;
+              const rect = canvas.getBoundingClientRect();
+              ctx.clearRect(0, 0, rect.width, rect.height);
+              // edges on focus
+              if (hovered && showEdgesRef.current) {
+                const src = nodes[idToIndexRef.current[hovered]];
+                if (src) {
+                  ctx.strokeStyle = "rgba(150,150,150,0.6)";
+                  ctx.lineWidth = 1;
+                  const srcS = worldToScreen(src);
+                  for (const nb of adjacencyRef.current[hovered] || []) {
+                    const t = nodes[idToIndexRef.current[nb]];
+                    if (!t) continue;
+                    const thr = degreeThresholdRef.current;
+                    if (thr > 0 && t.degree < thr) continue;
+                    const tS = worldToScreen(t);
+                    ctx.beginPath();
+                    ctx.moveTo(srcS.x, srcS.y);
+                    ctx.lineTo(tS.x, tS.y);
+                    ctx.stroke();
+                  }
+                }
+              }
+            // nodes
+            const neighborSet = hovered ? new Set<string>([hovered, ...(adjacencyRef.current[hovered] || [])]) : null;
+            for (const n of nodes) {
+                const thr = degreeThresholdRef.current;
+              if (neighborSet) {
+                if (!neighborSet.has(n.id)) continue;
+              } else if (thr > 0 && n.degree < thr) continue;
+                const {x, y} = worldToScreen(n);
+              const r = Math.max(1, Math.sqrt(Math.max(1, n.degree)) * (hovered ? 1.6 : 1));
+                const isNeighbor = hovered ? (n.id === hovered || (adjacencyRef.current[hovered] || []).includes(n.id)) : true;
+                ctx.fillStyle = isNeighbor ? "#9aa" : "#bbb";
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              // label for focused
+              if (hovered) {
+                const h = nodes[idToIndexRef.current[hovered]];
+                if (h) {
+                  const p = worldToScreen(h);
+                  ctx.fillStyle = "#222";
+                  ctx.font = "12px system-ui, -apple-system, sans-serif";
+                  ctx.fillText(h.name, p.x + 8, p.y - 8);
+                }
+              }
+            }
+
+            let isAnimating = false;
+            let animToken = 0;
+            const animateTo = (targetCenter: {x: number; y: number}, targetScale: number) => {
+              // ~0.5s animation at 60fps -> ~30 steps
+              const steps = 30;
+              const start = {...viewRef.current};
+              let i = 0;
+              isAnimating = true;
+              const myToken = ++animToken;
+              const tick = () => {
+                if (myToken !== animToken) { isAnimating = false; return; }
+                i += 1;
+                const t = i / steps;
+                const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // quadraticInOut
+                viewRef.current.scale = start.scale + (targetScale - start.scale) * ease;
+                // set tx, ty so that targetCenter maps to canvas center
+                const rect = canvas.getBoundingClientRect();
+                const cx = rect.width / 2;
+                const cy = rect.height / 2;
+                viewRef.current.tx = cx - targetCenter.x * viewRef.current.scale;
+                viewRef.current.ty = cy - targetCenter.y * viewRef.current.scale;
+                draw();
+                if (i < steps) requestAnimationFrame(tick);
+                else { isAnimating = false; }
+              };
+              requestAnimationFrame(tick);
+            };
+
+            const onMove = throttle((ev: MouseEvent) => {
+              const rect = canvas.getBoundingClientRect();
+              const x = ev.clientX - rect.left;
+              const y = ev.clientY - rect.top;
+              if (isPanning && panStart) {
+                const dx = x - panStart.x;
+                const dy = y - panStart.y;
+                viewRef.current.tx = viewStart.tx + dx;
+                viewRef.current.ty = viewStart.ty + dy;
+                draw();
+                return;
+              }
+              if (isAnimating) return; // avoid hover picking during camera animation
+            }, 24);
+
+            const onClick = (ev: MouseEvent) => {
+              const rect = canvas.getBoundingClientRect();
+              const x = ev.clientX - rect.left;
+              const y = ev.clientY - rect.top;
+              const world = screenToWorld({x, y});
+              let best: {id: string; d2: number} | null = null;
+              for (const n of nodes) {
+                const dx = n.x - world.x;
+                const dy = n.y - world.y;
+                const d2 = dx * dx + dy * dy;
+                if (!best || d2 < best.d2) best = {id: n.id, d2};
+              }
+              const picked = best && best.d2 < 49 / (viewRef.current.scale * viewRef.current.scale) ? best.id : null;
+              if (picked) {
+                hovered = picked;
+                const center = nodes[idToIndexRef.current[picked]];
+                if (center) {
+                  const rect2 = canvas.getBoundingClientRect();
+                  const targetScale = Math.min(3.0, Math.max(0.4, viewRef.current.scale * 1.4));
+                  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                  for (const nd of nodes) { if (nd.x < minX) minX = nd.x; if (nd.y < minY) minY = nd.y; if (nd.x > maxX) maxX = nd.x; if (nd.y > maxY) maxY = nd.y; }
+                  const mx = (rect2.width / targetScale) / 2;
+                  const my = (rect2.height / targetScale) / 2;
+                  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+                  const halfW = (maxX - minX) / 2;
+                  const halfH = (maxY - minY) / 2;
+                  const cx = (halfW <= 0 || halfH <= 0 || mx >= halfW || my >= halfH) ? center.x : clamp(center.x, minX + mx, maxX - mx);
+                  const cy = (halfW <= 0 || halfH <= 0 || mx >= halfH || my >= halfH) ? center.y : clamp(center.y, minY + my, maxY - my);
+                  animateTo({x: cx, y: cy}, targetScale);
+                  hasInteracted = true;
+                }
+                draw();
+              } else {
+                // click empty space to defocus
+                hovered = null;
+                draw();
+              }
+            };
+
+            const onWheel = (ev: WheelEvent) => {
+              ev.preventDefault();
+              const rect = canvas.getBoundingClientRect();
+              const x = ev.clientX - rect.left;
+              const y = ev.clientY - rect.top;
+              const worldBefore = screenToWorld({x, y});
+              // Cancel any running hover animation on wheel
+              animToken += 1; isAnimating = false;
+              const factor = Math.exp(-ev.deltaY * 0.001);
+              const newScale = Math.min(4, Math.max(0.1, viewRef.current.scale * factor));
+              viewRef.current.scale = newScale;
+              const worldAfter = worldBefore;
+              const screenAfter = {x: worldAfter.x * newScale + viewRef.current.tx, y: worldAfter.y * newScale + viewRef.current.ty};
+              viewRef.current.tx += x - screenAfter.x;
+              viewRef.current.ty += y - screenAfter.y;
+              hasInteracted = true;
+              draw();
+            };
+
+            const onDown = (ev: MouseEvent) => {
+              const rect = canvas.getBoundingClientRect();
+              panStart = {x: ev.clientX - rect.left, y: ev.clientY - rect.top};
+              // Cancel any running hover animation on pan start
+              animToken += 1; isAnimating = false;
+              viewStart = {...viewRef.current};
+              isPanning = true;
+              hasInteracted = true;
+            };
+            const onUp = () => { isPanning = false; };
+
+            canvas.addEventListener("mousemove", onMove);
+            canvas.addEventListener("click", onClick);
+            canvas.addEventListener("wheel", onWheel, {passive: false});
+            canvas.addEventListener("mousedown", onDown);
+            window.addEventListener("mouseup", onUp);
+            const ro = new ResizeObserver(() => {
+              resizeCanvas();
+              // Only auto-fit if the user hasn't interacted yet
+              if (!hasInteracted) computeFit();
+              draw();
+            });
+            ro.observe(canvas.parentElement!);
+
+            draw();
+
+            (canvas as any)._cleanup = () => {
+              canvas.removeEventListener("mousemove", onMove);
+              canvas.removeEventListener("click", onClick);
+              canvas.removeEventListener("wheel", onWheel as any);
+              canvas.removeEventListener("mousedown", onDown);
+              window.removeEventListener("mouseup", onUp);
+              ro.disconnect();
+            };
+          } catch (e) {
+            console.warn("Canvas fallback failed", e);
+          }
+        }
+      }
+    }
+    init();
+    return () => {
+      disposed = true;
+      const s: any = sigmaRef.current;
+      if (s?._ro) try { s._ro.disconnect(); } catch {}
+      sigmaRef.current?.kill();
+      sigmaRef.current = null;
+      graphRef.current = null;
+    };
+  }, []);
+
+  // Apply degree filter
+  React.useEffect(() => {
+    const g = graphRef.current;
+    if (!g) return;
+    g.forEachNode((n) => {
+      const deg = g.getNodeAttribute(n, "degree") || 0;
+      g.setNodeAttribute(n, "hidden", deg < degreeThreshold);
+    });
+    sigmaRef.current?.refresh();
+  }, [degreeThreshold]);
+
+  // Search suggestions
+  React.useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) { setSearchMatches([]); return; }
+    const idx = nameIndexRef.current;
+    const starts: Array<{id: string; name: string}> = [];
+    const contains: Array<{id: string; name: string}> = [];
+    for (const e of idx) {
+      const pos = e.nameLower.indexOf(q);
+      if (pos === 0) starts.push({id: e.id, name: e.name});
+      else if (pos > 0) contains.push({id: e.id, name: e.name});
+      if (starts.length >= 8) break;
+    }
+    const combined = starts.length >= 8 ? starts : [...starts, ...contains].slice(0, 8);
+    setSearchMatches(combined);
+  }, [searchQuery]);
+
+  function focusById(nodeId: string) {
+    if (setHoveredRef.current) setHoveredRef.current(nodeId);
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col relative">
+      <div className="absolute top-2 left-2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 shadow text-sm">
+        {focusedInfo ? (
+          <div>
+            <div><span className="font-medium">Protein:</span> {focusedInfo.name}</div>
+            <div><span className="font-medium">Interactions:</span> {focusedInfo.degree}</div>
+            <div><span className="font-medium">New interactions:</span> {focusedInfo.blue}</div>
+          </div>
+        ) : (
+          <div>
+            <div><span className="font-medium">Proteins:</span> {totals.nodes}</div>
+            <div><span className="font-medium">Interactions:</span> {totals.edges}</div>
+            <div><span className="font-medium">New interactions:</span> {totals.blueEdges}</div>
+          </div>
+        )}
+      </div>
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
+        <div className="relative">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchMatches[0]) {
+                focusById(searchMatches[0].id);
+              }
+            }}
+            placeholder="Search node…"
+            className="border rounded px-2 py-1 text-sm w-56 bg-white text-gray-900 placeholder-gray-400"
+          />
+          {searchQuery && searchMatches.length > 0 && (
+            <div className="absolute mt-1 w-56 max-h-56 overflow-auto bg-white border border-gray-300 rounded shadow z-10">
+              {searchMatches.map((m) => (
+                <button
+                  key={m.id}
+                  className="block w-full text-left px-2 py-1 hover:bg-gray-200 text-sm text-gray-900"
+                  onClick={() => focusById(m.id)}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <span>Degree ≥</span>
+          <input
+            type="range"
+            min={0}
+            max={50}
+            step={1}
+            value={degreeThreshold}
+            onChange={(e) => setDegreeThreshold(Number(e.target.value))}
+          />
+          <span>{degreeThreshold}</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={showEdges} onChange={(e) => setShowEdges(e.target.checked)} />
+          <span>Show edges on hover</span>
+        </label>
+      </div>
+      <div ref={containerRef} className="absolute inset-0" />
+      <canvas ref={fallbackCanvasRef} className="absolute inset-0" style={{display: "none"}} />
+    </div>
+  );
+}
+
+// ----- Canvas2D Fallback (no WebGL) -----
+function fitToCanvas(nodes: Array<{x: number; y: number}>, width: number, height: number) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    if (n.x < minX) minX = n.x;
+    if (n.y < minY) minY = n.y;
+    if (n.x > maxX) maxX = n.x;
+    if (n.y > maxY) maxY = n.y;
+  }
+  const dx = maxX - minX || 1;
+  const dy = maxY - minY || 1;
+  const padding = 20;
+  const sx = (width - 2 * padding) / dx;
+  const sy = (height - 2 * padding) / dy;
+  const scale = Math.min(sx, sy);
+  const tx = padding - minX * scale + (width - (dx * scale + 2 * padding)) / 2;
+  const ty = padding - minY * scale + (height - (dy * scale + 2 * padding)) / 2;
+  return {scale, tx, ty};
+}
+
+function initCanvasFallback(data: GraphData): boolean {
+  const canvas = (document.querySelector("canvas.sigma-edges") as HTMLCanvasElement | null) ? null : null; // just to silence unused warnings
+  // this function body will be replaced via closure in component
+  return true;
+}
+
+
