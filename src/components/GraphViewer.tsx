@@ -75,6 +75,7 @@ export default function GraphViewer() {
   const [showAllEdges, setShowAllEdges] = React.useState(false);
   const showAllEdgesRef = React.useRef(showAllEdges);
   const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [viewMode, setViewMode] = React.useState<'default' | 'locality'>('default');
   const geneAbortRef = React.useRef<AbortController | null>(null);
   const geneTimerRef = React.useRef<number | null>(null);
@@ -82,6 +83,8 @@ export default function GraphViewer() {
   const GENE_CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
   const clusterLabelsRef = React.useRef<HTMLDivElement | null>(null);
   const clusterLabelElsRef = React.useRef<Record<string, HTMLDivElement>>({});
+  const groupOutlineLayerRef = React.useRef<HTMLDivElement | null>(null);
+  const groupOutlineElsRef = React.useRef<Record<string, HTMLDivElement>>({});
 
   function normalizeGeneKey(q: string) {
     return (q || '').trim().toLowerCase();
@@ -943,6 +946,97 @@ export default function GraphViewer() {
               clusterLabelsRef.current.innerHTML = '';
             }
           } catch {}
+          // Draw group outlines + labels for locality view
+          try {
+            if (viewMode === 'locality') {
+              let layer = groupOutlineLayerRef.current;
+              const container = containerRef.current!;
+              if (!layer) {
+                layer = document.createElement('div');
+                layer.style.position = 'absolute';
+                layer.style.left = '0';
+                layer.style.top = '0';
+                layer.style.right = '0';
+                layer.style.bottom = '0';
+                layer.style.pointerEvents = 'none';
+                container.appendChild(layer);
+                groupOutlineLayerRef.current = layer;
+              }
+              const used: Record<string, true> = {};
+              const groupDefs = [
+                {key: 'NUCLEUS', members: ['nucleus','chromosome','spliceosome','centromere','kinetochore','nucleosome core','telomere','nuclear pore complex','dna-directed rna polymerase','primosome']},
+                {key: 'CYTOPLASM', members: ['cytoplasm','cytoskeleton','endoplasmic reticulum','golgi apparatus','cytoplasmic vesicle','endosome','lysosome','microtubule','mitochondrion outer membrane','microsome','intermediate filament','peroxisome','proteasome','proteaosome','lipid droplet','sarcoplasmic reticulum','signalosome','inflammasome','signal recognition particle','thick filament','vacuole','viral envelope protein','target membrane','membrane']},
+                {key: 'MITOCHONDRIA', members: ['mitochondrion','mitochondrion inner membrane','mitochondrion nuclei','mitochondrion nucleoid']},
+                {key: 'EXTRACELLULAR', members: ['cell membrane','cell projection','synapse','cell junction','cilium','extracellular matrix','immunoglobulin','postsynaptic cell membrane','flagellum','t cell receptor','keratin','tight junction','synaptosome','coated pit','basement membrane','dynein','mhc ii','gap junction','hdl','exosome','mhc i','ldl','vldl','membrane attack complex','surface film','chylomicron','virion','target cell membrane']},
+                {key: 'OTHER', members: []},
+              ];
+              const toGroup = (loc: string) => {
+                const k = (loc || '').toLowerCase();
+                for (let gi = 0; gi < groupDefs.length - 1; gi++) if (groupDefs[gi].members.includes(k)) return groupDefs[gi].key;
+                return 'OTHER';
+              };
+              const groupPts: Record<string, Array<{x:number;y:number;w:number}>> = {};
+              g.forEachNode((n, attrs) => {
+                if (!attrs?.isCluster) return;
+                const nm = (attrs.name as string) || '';
+                const group = toGroup(nm);
+                // Offset group centroid downward slightly to avoid label overlap with dense clusters
+                const pos = (s as any).graphToViewport?.({x: attrs.x, y: attrs.y + 10});
+                if (!pos) return;
+                if (!groupPts[group]) groupPts[group] = [];
+                const w = Math.max(1, Number((attrs as any)?.count) || 1);
+                groupPts[group].push({x: pos.x, y: pos.y, w});
+              });
+              for (const def of groupDefs) {
+                const pts = groupPts[def.key];
+                if (!pts || !pts.length) continue;
+                // centroid and radius
+                let sx=0, sy=0, sw=0; for (const p of pts){sx+=p.x*p.w; sy+=p.y*p.w; sw+=p.w;}
+                const cx = sx/Math.max(1,sw), cy = sy/Math.max(1,sw);
+                let r = 60; for (const p of pts){const dx=p.x-cx,dy=p.y-cy; const d=Math.sqrt(dx*dx+dy*dy)+Math.sqrt(p.w)*0.6+30; if(d>r) r=d;}
+                let el = groupOutlineElsRef.current[def.key];
+                if (!el) {
+                  el = document.createElement('div');
+                  el.style.position = 'absolute';
+                  el.style.border = '1px solid rgba(148,163,184,0.9)';
+                  el.style.borderRadius = '9999px';
+                  el.style.background = 'rgba(148,163,184,0.06)';
+                  el.style.pointerEvents = 'none';
+                  const label = document.createElement('div');
+                  label.style.position = 'absolute';
+                  label.style.color = '#e5e7eb';
+                  label.style.fontSize = '14px';
+                  label.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+                  label.style.transform = 'translate(-50%, -100%)';
+                  el.appendChild(label);
+                  layer.appendChild(el);
+                  groupOutlineElsRef.current[def.key] = el;
+                }
+                const label = el.lastChild as HTMLDivElement;
+                // Position outline div centered at (cx, cy)
+                el.style.left = `${Math.round(cx - r)}px`;
+                el.style.top = `${Math.round(cy - r)}px`;
+                el.style.width = `${Math.round(r * 2)}px`;
+                el.style.height = `${Math.round(r * 2)}px`;
+                // Place label relative to the circle's own box, at top-center just outside
+                label.textContent = def.key;
+                label.style.left = `${Math.round(r)}px`;
+                label.style.top = `0px`;
+                label.style.transform = 'translate(-50%, -110%)';
+                used[def.key] = true;
+              }
+              for (const key of Object.keys(groupOutlineElsRef.current)) {
+                if (!used[key]) {
+                  const el = groupOutlineElsRef.current[key];
+                  if (el && el.parentElement) el.parentElement.removeChild(el);
+                  delete groupOutlineElsRef.current[key];
+                }
+              }
+            } else if (groupOutlineLayerRef.current) {
+              groupOutlineLayerRef.current.innerHTML = '';
+            }
+          } catch {}
+
           // Debug camera state occasionally
           if (isDebug()) {
             if (!(onCamUpdate as any)._lt || performance.now() - (onCamUpdate as any)._lt > 320) {
@@ -990,20 +1084,20 @@ export default function GraphViewer() {
               const col = getHeatColorForCount(c, isNeighbor ? 1 : 0.6);
               g.setNodeAttribute(n, "color", col);
             } else {
-              g.setNodeAttribute(n, "color", isNeighbor ? undefined : "#bbb");
+            g.setNodeAttribute(n, "color", isNeighbor ? undefined : "#bbb");
             }
             // Only show hovered node and neighbors; hide others
             const hideByDeg = degreeThresholdRef.current > 0 && (g.getNodeAttribute(n, "degree") || 0) < degreeThresholdRef.current;
             const hideByNew = showOnlyNewRef.current && !nodesBlueSetRef.current.has(n);
             const hidden = node ? !isNeighbor || hideByNew : (hideByDeg || hideByNew);
             g.setNodeAttribute(n, "hidden", clusterModeRef.current ? true : hidden);
-            // Show label only for hovered node
+            // Show label only for hovered node and its actual neighbors
             const name = g.getNodeAttribute(n, "name") || "";
             const isHovered = node && n === node;
             g.setNodeAttribute(n, "label", (isHovered || (node && isNeighbor)) ? name : "");
-            // Enlarge hovered + neighbors for readability
+            // Enlarge hovered node only for readability
             const baseSize = g.getNodeAttribute(n, "baseSize") || g.getNodeAttribute(n, "size") || 1;
-            const factor = isHovered ? 2.8 : (node && isNeighbor ? 1.9 : 1);
+            const factor = isHovered ? 2.8 : 1;
             g.setNodeAttribute(n, "size", baseSize * factor);
           });
 
@@ -1097,7 +1191,7 @@ export default function GraphViewer() {
             const cam = s.getCamera();
             // Save previous cam state only if we are focusing a new node
             if (focusedNodeRef.current !== node) {
-              if (!focusedNodeRef.current) prevCamStateRef.current = cam.getState();
+            if (!focusedNodeRef.current) prevCamStateRef.current = cam.getState();
             }
             focusedNodeRef.current = node;
             // Update focused info (degree and blue-degree) respecting filters
@@ -1148,8 +1242,8 @@ export default function GraphViewer() {
             // Avoid restarting the same animation while one is in progress
             if (!suppressCamAnimRef.current) {
               if (!isAnimatingRef.current && focusedNodeRef.current === node) {
-                try { 
-                  (window as any).__suspendLOD = true;
+            try { 
+              (window as any).__suspendLOD = true;
                   isAnimatingRef.current = true;
                   (cam as any).animate(target, {duration: 500, easing: 'quadraticInOut'} as any);
                   window.setTimeout(() => { (window as any).__suspendLOD = false; isAnimatingRef.current = false; }, 520);
@@ -1186,7 +1280,7 @@ export default function GraphViewer() {
                   const c = nodesBlueCountsRef.current[n] || 0;
                   g.setNodeAttribute(n, "color", getHeatColorForCount(c));
                 } else {
-                  g.setNodeAttribute(n, "color", undefined);
+                g.setNodeAttribute(n, "color", undefined);
                 }
                 g.setNodeAttribute(n, "highlighted", 0);
                 // restore size
@@ -1497,9 +1591,9 @@ export default function GraphViewer() {
                 if (!best || d2 < best.d2) best = {id: n.id, d2};
               }
               const picked = best && best.d2 < 49 / (viewRef.current.scale * viewRef.current.scale) ? best.id : null;
-              if (picked) {
+                if (picked) {
                 hovered = picked;
-                const center = nodes[idToIndexRef.current[picked]];
+                  const center = nodes[idToIndexRef.current[picked]];
                 if (center) {
                   const rect2 = canvas.getBoundingClientRect();
                   const targetScale = Math.min(3.0, Math.max(0.4, viewRef.current.scale * 1.4));
@@ -1518,8 +1612,8 @@ export default function GraphViewer() {
                 draw();
               } else {
                 // click empty space to defocus
-                hovered = null;
-                draw();
+              hovered = null;
+              draw();
               }
             };
 
@@ -1650,72 +1744,88 @@ export default function GraphViewer() {
           </div>
         )}
       </div>
-      {/* Sidebar controls box under info box */}
-      <div className="absolute top-28 left-2 z-10 w-80 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm flex flex-col gap-3">
-        <label className="flex items-center justify-between gap-2 text-sm">
-          <span>Show only new</span>
-          <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-sm">
-          <span>Locality view</span>
-          <input type="checkbox" checked={viewMode === 'locality'} onChange={(e) => setViewMode(e.target.checked ? 'locality' : 'default')} />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-sm opacity-100">
-          <span>Show all edges</span>
+      {/* Sidebar controls box under info box (collapsible) */}
+      <div className="absolute top-28 left-2 z-10">
+        {sidebarOpen ? (
+          <div className="relative w-80 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm flex flex-col gap-3">
+            <button
+              aria-label="Collapse sidebar"
+              onClick={() => setSidebarOpen(false)}
+              className="absolute -right-3 top-3 h-6 w-6 rounded-full border border-gray-700 bg-gray-800/90 text-white flex items-center justify-center shadow"
+            >
+              ‹
+            </button>
+            <label className="flex items-center justify-between gap-2 text-sm">
+              <span>Show only new</span>
+              <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
+            </label>
+            {/* locality toggle moved to top bar */}
+            <label className="flex items-center justify-between gap-2 text-sm opacity-100">
+              <span>Show all edges</span>
           <input
-            type="checkbox"
-            checked={showAllEdges}
-            onChange={(e) => setShowAllEdges(e.target.checked)}
-            disabled={!!focusedNodeRef.current}
-          />
-        </label>
-        <div className="flex items-center justify-between">
-          <span className="whitespace-nowrap">Confidence level</span>
-          <span className="tabular-nums">{confidence.toFixed(2)}</span>
-        </div>
-          <input
-          className="w-full"
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={confidence}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setConfidence(v);
-              confidenceRef.current = v;
-            recomputeTotalsImmediate();
-              if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
-            }}
-        />
-        <div className="flex items-center justify-between">
-          <span className="whitespace-nowrap">Degree ≥</span>
-          <span className="tabular-nums">{degreeThreshold}</span>
-        </div>
-          <input
-          className="w-full"
-          type="range"
-          min={0}
-          max={50}
-          step={1}
-          value={degreeThreshold}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setDegreeThreshold(v);
-            recomputeTotalsImmediate();
-              if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
-            }}
-        />
-        {geneInfo && (
-          <div className="mt-1 rounded-md border border-gray-700 bg-gray-900/70 p-2">
-            <div className="text-xs text-gray-300">
-              <span className="font-semibold">{geneInfo.symbol || geneInfo.name}</span>
-              {geneInfo.name && geneInfo.symbol && <span className="ml-1">— {geneInfo.name}</span>}
+                type="checkbox"
+                checked={showAllEdges}
+                onChange={(e) => setShowAllEdges(e.target.checked)}
+                disabled={!!focusedNodeRef.current}
+              />
+            </label>
+            <div className="flex items-center justify-between">
+              <span className="whitespace-nowrap">Confidence level</span>
+              <span className="tabular-nums">{confidence.toFixed(2)}</span>
             </div>
-            {geneInfo.summary && (
-              <div className="mt-1 text-xs text-gray-200 leading-snug line-clamp-4">{geneInfo.summary}</div>
+            <input
+              className="w-full"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={confidence}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setConfidence(v);
+                confidenceRef.current = v;
+                recomputeTotalsImmediate();
+                if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
+              }}
+            />
+            <div className="flex items-center justify-between">
+              <span className="whitespace-nowrap">Degree ≥</span>
+              <span className="tabular-nums">{degreeThreshold}</span>
+            </div>
+            <input
+              className="w-full"
+            type="range"
+            min={0}
+            max={50}
+            step={1}
+            value={degreeThreshold}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setDegreeThreshold(v);
+                recomputeTotalsImmediate();
+                if (focusedNodeRef.current) recomputeFocusedInfoImmediate(focusedNodeRef.current);
+              }}
+            />
+            {geneInfo && (
+              <div className="mt-1 rounded-md border border-gray-700 bg-gray-900/70 p-2">
+                <div className="text-xs text-gray-300">
+                  <span className="font-semibold">{geneInfo.symbol || geneInfo.name}</span>
+                  {geneInfo.name && geneInfo.symbol && <span className="ml-1">— {geneInfo.name}</span>}
+                </div>
+                {geneInfo.summary && (
+                  <div className="mt-1 text-xs text-gray-200 leading-snug line-clamp-4">{geneInfo.summary}</div>
+                )}
+              </div>
             )}
           </div>
+        ) : (
+          <button
+            aria-label="Expand sidebar"
+            onClick={() => setSidebarOpen(true)}
+            className="bg-gray-800/90 text-white border border-gray-700 rounded-md px-2 py-2 shadow"
+          >
+            ›
+          </button>
         )}
       </div>
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
@@ -1745,6 +1855,14 @@ export default function GraphViewer() {
             </div>
           )}
         </div>
+        <button
+          onClick={() => setViewMode(viewMode === 'locality' ? 'default' : 'locality')}
+          className="border border-gray-700 rounded px-2 py-1 text-sm bg-gray-900/70 hover:bg-gray-900"
+          aria-label="Toggle locality view"
+          title={viewMode === 'locality' ? 'Switch to graph view' : 'Switch to locality view'}
+        >
+          {viewMode === 'locality' ? 'Graph view' : 'Locality view'}
+        </button>
       </div>
       <div ref={containerRef} className="absolute inset-0" />
       <canvas ref={fallbackCanvasRef} className="absolute inset-0" style={{display: "none"}} />

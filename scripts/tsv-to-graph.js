@@ -312,11 +312,12 @@ async function run() {
   });
   // Place groups in a 2x2 layout: NUCLEUS (TL), CYTOPLASM (TR), EXTRACELLULAR (BL), MITOCHONDRIA (BR)
   const locCenter = new Map();
+  // Baseline positions for 2x2 layout (moderate spacing)
   const quadOffset = {
-    0: {x: -450, y: -300}, // NUCLEUS top-left
-    1: {x:  450, y: -300}, // CYTOPLASM top-right
-    3: {x:  450, y:  320}, // EXTRACELLULAR bottom-right (we'll swap below)
-    2: {x: -450, y:  320}, // MITOCHONDRIA bottom-left
+    0: {x: -900, y: -650}, // NUCLEUS top-left
+    1: {x:  900, y: -650}, // CYTOPLASM top-right
+    3: {x:  900, y:  700}, // EXTRACELLULAR bottom-right
+    2: {x: -900, y:  700}, // MITOCHONDRIA bottom-left
     4: {x:    0, y:    0}, // OTHER center
   };
   let start = 0;
@@ -330,15 +331,74 @@ async function run() {
     const count = current.length;
     const colsInGroup = Math.max(1, Math.ceil(Math.sqrt(count)));
     const rowsInGroup = Math.ceil(count / colsInGroup);
-    const baseSpacing = 300; // larger spacing between clusters
+    const baseSpacing = 160; // moderate spacing within a group
     const base = quadOffset[gIdx] || {x: 0, y: 0};
     for (let idx = 0; idx < count; idx++) {
       const loc = current[idx];
       const gx = idx % colsInGroup;
       const gy = Math.floor(idx / colsInGroup);
-      const sizeBoost = 1.0 + Math.min(2.0, Math.sqrt(Math.max(1, (locCounts[loc] || 1))) * 0.05);
+      const sizeBoost = 1.0 + Math.min(1.5, Math.sqrt(Math.max(1, (locCounts[loc] || 1))) * 0.03);
       locCenter.set(loc, {x: base.x + gx * baseSpacing * sizeBoost, y: base.y + gy * baseSpacing * sizeBoost});
     }
+  }
+  // After initial placement, resolve overlaps between group bounding circles by small separations
+  const groupLocs = Object.create(null);
+  for (const loc of locNamesSorted) {
+    const gi = groupIndexOf(loc);
+    const gkey = groupDefs[gi]?.key || 'OTHER';
+    if (!groupLocs[gkey]) groupLocs[gkey] = [];
+    groupLocs[gkey].push(loc);
+  }
+  function computeGroupCircle(key) {
+    const locs = groupLocs[key] || [];
+    if (!locs.length) return {cx: 0, cy: 0, r: 0};
+    let sx = 0, sy = 0, sw = 0;
+    for (const loc of locs) {
+      const p = locCenter.get(loc) || {x: 0, y: 0};
+      const w = Math.max(1, (locCounts[loc] || 1));
+      sx += p.x * w; sy += p.y * w; sw += w;
+    }
+    const cx = sx / Math.max(1, sw);
+    const cy = sy / Math.max(1, sw);
+    let r = 120;
+    for (const loc of locs) {
+      const p = locCenter.get(loc) || {x: 0, y: 0};
+      const dx = p.x - cx, dy = p.y - cy;
+      const d = Math.sqrt(dx * dx + dy * dy) + 120;
+      if (d > r) r = d;
+    }
+    return {cx, cy, r};
+  }
+  const groupKeys = groupDefs.map(g => g.key);
+  for (let iter = 0; iter < 6; iter++) {
+    let anyMoved = false;
+    const circles = Object.create(null);
+    for (const gk of groupKeys) circles[gk] = computeGroupCircle(gk);
+    for (let i = 0; i < groupKeys.length; i++) {
+      for (let j = i + 1; j < groupKeys.length; j++) {
+        const gi = groupKeys[i], gj = groupKeys[j];
+        const a = circles[gi], b = circles[gj];
+        if (!a || !b) continue;
+        const dx = b.cx - a.cx, dy = b.cy - a.cy;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const minGap = 220; // desired extra gap between groups
+        const overlap = (a.r + b.r + minGap) - dist;
+        if (overlap > 0) {
+          anyMoved = true;
+          const ux = dx / dist, uy = dy / dist;
+          const push = overlap / 2;
+          const moveA = {x: -ux * push, y: -uy * push};
+          const moveB = {x: ux * push, y: uy * push};
+          for (const loc of (groupLocs[gi] || [])) {
+            const p = locCenter.get(loc); if (p) locCenter.set(loc, {x: p.x + moveA.x, y: p.y + moveA.y});
+          }
+          for (const loc of (groupLocs[gj] || [])) {
+            const p = locCenter.get(loc); if (p) locCenter.set(loc, {x: p.x + moveB.x, y: p.y + moveB.y});
+          }
+        }
+      }
+    }
+    if (!anyMoved) break;
   }
   const nodeKey = (id, loc) => `${id}@${loc || 'unknown'}`;
   const nodesOutL = [];
