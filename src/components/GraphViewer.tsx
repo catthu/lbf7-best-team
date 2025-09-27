@@ -75,10 +75,13 @@ export default function GraphViewer() {
   const [showAllEdges, setShowAllEdges] = React.useState(false);
   const showAllEdgesRef = React.useRef(showAllEdges);
   const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
+  const [viewMode, setViewMode] = React.useState<'default' | 'locality'>('default');
   const geneAbortRef = React.useRef<AbortController | null>(null);
   const geneTimerRef = React.useRef<number | null>(null);
   const geneCacheRef = React.useRef<Record<string, {symbol?: string; name?: string; summary?: string; t: number}>>({});
   const GENE_CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
+  const clusterLabelsRef = React.useRef<HTMLDivElement | null>(null);
+  const clusterLabelElsRef = React.useRef<Record<string, HTMLDivElement>>({});
 
   function normalizeGeneKey(q: string) {
     return (q || '').trim().toLowerCase();
@@ -640,7 +643,7 @@ export default function GraphViewer() {
       await new Promise((r) => setTimeout(r, 32));
       if (disposed) return;
       if (!containerRef.current) return;
-      const res = await fetch("/graph.json", {cache: "no-store"});
+      const res = await fetch(viewMode === 'locality' ? "/graph_locality.json" : "/graph.json", {cache: "no-store"});
       const data: GraphData = await res.json();
       if (disposed) return;
 
@@ -698,6 +701,7 @@ export default function GraphViewer() {
             isCluster: 1,
             community: c.community,
             hidden: true,
+            count: typeof c.count === 'number' ? c.count : undefined,
           });
         }
       }
@@ -887,6 +891,58 @@ export default function GraphViewer() {
           (onCamUpdate as any)._t = performance.now();
           updateLOD();
           clampCameraToGraph();
+          // Render cluster labels in cluster mode (and for locality view always)
+          try {
+            if (clusterModeRef.current || viewMode === 'locality') {
+              let layer = clusterLabelsRef.current;
+              if (!layer) {
+                layer = document.createElement('div');
+                layer.style.position = 'absolute';
+                layer.style.left = '0';
+                layer.style.top = '0';
+                layer.style.right = '0';
+                layer.style.bottom = '0';
+                layer.style.pointerEvents = 'none';
+                container.appendChild(layer);
+                clusterLabelsRef.current = layer;
+              }
+              const used = {} as Record<string, true>;
+              g.forEachNode((n, attrs) => {
+                if (!attrs?.isCluster) return;
+                if (clusterModeRef.current && g.getNodeAttribute(n, 'hidden')) return;
+                const name = (attrs.name as string) || '';
+                const cnt = (attrs as any)?.count;
+                const pos = (s as any).graphToViewport?.({x: attrs.x, y: attrs.y});
+                if (!pos) return;
+                let el = clusterLabelElsRef.current[n];
+                if (!el) {
+                  el = document.createElement('div');
+                  el.style.position = 'absolute';
+                  el.style.color = '#e5e7eb';
+                  el.style.fontSize = '12px';
+                  el.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+                  el.style.pointerEvents = 'none';
+                  el.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+                  clusterLabelElsRef.current[n] = el;
+                  layer.appendChild(el);
+                }
+                el.textContent = cnt ? `${name} (${cnt})` : name;
+                el.style.left = `${Math.round(pos.x)}px`;
+                el.style.top = `${Math.round(pos.y - 16)}px`;
+                el.style.transform = 'translate(-50%, -100%)';
+                used[n] = true;
+              });
+              for (const key of Object.keys(clusterLabelElsRef.current)) {
+                if (!used[key]) {
+                  const el = clusterLabelElsRef.current[key];
+                  if (el && el.parentElement) el.parentElement.removeChild(el);
+                  delete clusterLabelElsRef.current[key];
+                }
+              }
+            } else if (clusterLabelsRef.current) {
+              clusterLabelsRef.current.innerHTML = '';
+            }
+          } catch {}
           // Debug camera state occasionally
           if (isDebug()) {
             if (!(onCamUpdate as any)._lt || performance.now() - (onCamUpdate as any)._lt > 320) {
@@ -897,6 +953,8 @@ export default function GraphViewer() {
         };
         s.getCamera().on("updated", onCamUpdate);
         updateLOD();
+        // Force an initial label render (especially when switching to locality view)
+        try { onCamUpdate(); } catch {}
 
         // Hover focus: zoom to node, show only neighbors, show neighbor edges
         const setHovered = throttle((node?: string) => {
@@ -949,6 +1007,58 @@ export default function GraphViewer() {
             g.setNodeAttribute(n, "size", baseSize * factor);
           });
 
+          // Render locality labels even in non-cluster mode if locality view
+          try {
+            if (viewMode === 'locality') {
+              let layer = clusterLabelsRef.current;
+              const container = containerRef.current!;
+              if (!layer) {
+                layer = document.createElement('div');
+                layer.style.position = 'absolute';
+                layer.style.left = '0';
+                layer.style.top = '0';
+                layer.style.right = '0';
+                layer.style.bottom = '0';
+                layer.style.pointerEvents = 'none';
+                container.appendChild(layer);
+                clusterLabelsRef.current = layer;
+              }
+              const used = {} as Record<string, true>;
+              g.forEachNode((nid, attrs) => {
+                if (!attrs?.isCluster) return;
+                // Always show cluster labels in locality view
+                const name = (attrs.name as string) || '';
+                const cnt = (attrs as any)?.count;
+                const pos = (sigmaRef.current as any).graphToViewport?.({x: attrs.x, y: attrs.y});
+                if (!pos) return;
+                let el = clusterLabelElsRef.current[nid];
+                if (!el) {
+                  el = document.createElement('div');
+                  el.style.position = 'absolute';
+                  el.style.color = '#e5e7eb';
+                  el.style.fontSize = '12px';
+                  el.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+                  el.style.pointerEvents = 'none';
+                  el.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+                  clusterLabelElsRef.current[nid] = el;
+                  layer.appendChild(el);
+                }
+                el.textContent = cnt ? `${name} (${cnt})` : name;
+                el.style.left = `${Math.round(pos.x)}px`;
+                el.style.top = `${Math.round(pos.y - 16)}px`;
+                el.style.transform = 'translate(-50%, -100%)';
+                used[nid] = true;
+              });
+              for (const key of Object.keys(clusterLabelElsRef.current)) {
+                if (!used[key]) {
+                  const el = clusterLabelElsRef.current[key];
+                  if (el && el.parentElement) el.parentElement.removeChild(el);
+                  delete clusterLabelElsRef.current[key];
+                }
+              }
+            }
+          } catch {}
+
           // Draw only edges connected to hovered node when showEdges is on
           if (showEdgesRef.current && !showAllEdgesRef.current) {
             g.forEachEdge((e, _attr, sId, tId) => {
@@ -978,6 +1088,12 @@ export default function GraphViewer() {
 
           // Camera focus
           if (node) {
+          // Ensure gene info fetch on focus as well (not only on hover)
+          try {
+            const nmNow = (g.getNodeAttribute(node, 'name') as string) || node;
+            if (geneTimerRef.current) { window.clearTimeout(geneTimerRef.current); geneTimerRef.current = null; }
+            geneTimerRef.current = window.setTimeout(() => fetchGeneSummary(nmNow), 50);
+          } catch {}
             const cam = s.getCamera();
             // Save previous cam state only if we are focusing a new node
             if (focusedNodeRef.current !== node) {
@@ -1474,8 +1590,16 @@ export default function GraphViewer() {
       sigmaRef.current?.kill();
       sigmaRef.current = null;
       graphRef.current = null;
+      // Clean up cluster label overlay
+      try {
+        if (clusterLabelsRef.current && clusterLabelsRef.current.parentElement) {
+          clusterLabelsRef.current.parentElement.removeChild(clusterLabelsRef.current);
+        }
+        clusterLabelsRef.current = null;
+        clusterLabelElsRef.current = {} as any;
+      } catch {}
     };
-  }, []);
+  }, [viewMode]);
 
   // Apply degree filter
   React.useEffect(() => {
@@ -1531,6 +1655,10 @@ export default function GraphViewer() {
         <label className="flex items-center justify-between gap-2 text-sm">
           <span>Show only new</span>
           <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          <span>Locality view</span>
+          <input type="checkbox" checked={viewMode === 'locality'} onChange={(e) => setViewMode(e.target.checked ? 'locality' : 'default')} />
         </label>
         <label className="flex items-center justify-between gap-2 text-sm opacity-100">
           <span>Show all edges</span>
