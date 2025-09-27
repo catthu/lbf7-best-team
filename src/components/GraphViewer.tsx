@@ -72,6 +72,8 @@ export default function GraphViewer() {
   const [confidence, setConfidence] = React.useState(0);
   const confidenceRef = React.useRef(confidence);
   const [minConfidence, setMinConfidence] = React.useState(0);
+  const [showAllEdges, setShowAllEdges] = React.useState(false);
+  const showAllEdgesRef = React.useRef(showAllEdges);
   const [geneInfo, setGeneInfo] = React.useState<{symbol?: string; name?: string; summary?: string} | null>(null);
   const geneAbortRef = React.useRef<AbortController | null>(null);
   const geneTimerRef = React.useRef<number | null>(null);
@@ -217,6 +219,30 @@ export default function GraphViewer() {
   React.useEffect(() => {
     showEdgesRef.current = showEdges;
   }, [showEdges]);
+  React.useEffect(() => { showAllEdgesRef.current = showAllEdges; }, [showAllEdges]);
+  // When toggling Show all edges in non-focused view, update edge hidden flags immediately
+  React.useEffect(() => {
+    const g = graphRef.current;
+    const s = sigmaRef.current as any;
+    if (!g || !s) return;
+    const focused = focusedNodeRef.current;
+    if (focused) return; // only applies in non-focused view
+    const onlyNew = showOnlyNewRef.current;
+    const conf = confidence;
+    g.forEachEdge((e, attrs) => {
+      const adb = (attrs as any)?.allDBs || '';
+      const isNone = String(adb).trim().toLowerCase() === 'none';
+      const ap = (attrs as any)?.afmprob;
+      const hideByNew = onlyNew && !isNone;
+      const hideByConf = typeof ap === 'number' ? ap < conf : false;
+      const shouldShow = showAllEdges && !(hideByNew || hideByConf);
+      g.setEdgeAttribute(e, 'hidden', !shouldShow);
+      if (shouldShow && isNone) g.setEdgeAttribute(e, 'color', '#3b82f6');
+      else if (!shouldShow) g.setEdgeAttribute(e, 'color', undefined);
+    });
+    try { (s as any).setSetting('renderEdges', showAllEdges || (showEdgesRef.current && (s.getCamera().getState().ratio < 1.5))); } catch {}
+    s.refresh();
+  }, [showAllEdges, confidence, showOnlyNew]);
   React.useEffect(() => {
     degreeThresholdRef.current = degreeThreshold;
     // Recompute totals and refresh based on new degree filter
@@ -792,7 +818,7 @@ export default function GraphViewer() {
         const updateLOD = () => {
           if ((window as any).__suspendLOD) return;
           const ratio = s.getCamera().getState().ratio;
-          const drawEdges = showEdgesRef.current && ratio < 1.5;
+          const drawEdges = showAllEdgesRef.current || (showEdgesRef.current && ratio < 1.5);
           try {
             // Sigma v3 uses boolean setting key 'renderEdges'; TS types may not include it in our env
             (s as any).setSetting("renderEdges", drawEdges);
@@ -924,7 +950,7 @@ export default function GraphViewer() {
           });
 
           // Draw only edges connected to hovered node when showEdges is on
-          if (showEdgesRef.current) {
+          if (showEdgesRef.current && !showAllEdgesRef.current) {
             g.forEachEdge((e, _attr, sId, tId) => {
               let visible = node ? neighbors.has(sId) && neighbors.has(tId) : false;
               const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
@@ -943,7 +969,10 @@ export default function GraphViewer() {
               const hideByNew = showOnlyNewRef.current && !isNone;
               const ap = g.getEdgeAttribute(e, 'afmprob') as number | undefined;
               const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
-              g.setEdgeAttribute(e, "hidden", true || hideByNew || hideByConf);
+              // If showAllEdges is on and not focused, show all (filtered) edges; otherwise hide by default
+              const notFocused = !focusedNodeRef.current;
+              const defaultHidden = showAllEdgesRef.current && notFocused ? false : true;
+              g.setEdgeAttribute(e, "hidden", defaultHidden || hideByNew || hideByConf);
             });
           }
 
@@ -1140,7 +1169,16 @@ export default function GraphViewer() {
           if (handled) return;
           // clear any labels and edges when defocusing via empty click
           g.forEachNode((n) => g.setNodeAttribute(n, 'label', ''));
-          g.forEachEdge((e) => g.setEdgeAttribute(e, 'hidden', true));
+          g.forEachEdge((e, attrs) => {
+            const adb = (attrs as any)?.allDBs || '';
+            const isNone = String(adb).trim().toLowerCase() === 'none';
+            const ap = (attrs as any)?.afmprob;
+            const hideByNew = showOnlyNewRef.current && !isNone;
+            const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
+            const notFocused = true;
+            const defaultHidden = showAllEdgesRef.current && notFocused ? false : true;
+            g.setEdgeAttribute(e, 'hidden', defaultHidden || hideByNew || hideByConf);
+          });
           setHovered(undefined);
         });
         // Hover preview handlers (no camera movement)
@@ -1493,6 +1531,15 @@ export default function GraphViewer() {
         <label className="flex items-center justify-between gap-2 text-sm">
           <span>Show only new</span>
           <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm opacity-100">
+          <span>Show all edges</span>
+          <input
+            type="checkbox"
+            checked={showAllEdges}
+            onChange={(e) => setShowAllEdges(e.target.checked)}
+            disabled={!!focusedNodeRef.current}
+          />
         </label>
         <div className="flex items-center justify-between">
           <span className="whitespace-nowrap">Confidence level</span>
