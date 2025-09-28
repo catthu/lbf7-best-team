@@ -921,14 +921,22 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
                 if (!el) {
                   el = document.createElement('div');
                   el.style.position = 'absolute';
-                  el.style.color = '#e5e7eb';
+                  try {
+                    const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    el.style.color = dark ? '#e5e7eb' : '#111827';
+                    el.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                  } catch { el.style.color = '#e5e7eb'; }
                   el.style.fontSize = '12px';
                   el.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
                   el.style.pointerEvents = 'none';
-                  el.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
                   clusterLabelElsRef.current[n] = el;
                   layer.appendChild(el);
                 }
+                try {
+                  const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  el.style.color = dark ? '#e5e7eb' : '#111827';
+                  el.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                } catch {}
                 el.textContent = cnt ? `${name} (${cnt})` : name;
                 el.style.left = `${Math.round(pos.x)}px`;
                 el.style.top = `${Math.round(pos.y - 16)}px`;
@@ -998,13 +1006,20 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
                 if (!el) {
                   el = document.createElement('div');
                   el.style.position = 'absolute';
-                  el.style.border = '1px solid rgba(148,163,184,0.9)';
+                  try {
+                    const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    el.style.border = dark ? '1px solid rgba(148,163,184,0.9)' : '1px solid rgba(71,85,105,0.6)';
+                    el.style.background = dark ? 'rgba(148,163,184,0.06)' : 'rgba(2,6,23,0.06)';
+                  } catch { el.style.border = '1px solid rgba(148,163,184,0.9)'; el.style.background = 'rgba(148,163,184,0.06)'; }
                   el.style.borderRadius = '9999px';
-                  el.style.background = 'rgba(148,163,184,0.06)';
                   el.style.pointerEvents = 'none';
                   const label = document.createElement('div');
                   label.style.position = 'absolute';
-                  label.style.color = '#e5e7eb';
+                  try {
+                    const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    label.style.color = dark ? '#e5e7eb' : '#111827';
+                    label.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                  } catch { label.style.color = '#e5e7eb'; }
                   label.style.fontSize = '14px';
                   label.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
                   label.style.transform = 'translate(-50%, -100%)';
@@ -1012,6 +1027,17 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
                   layer.appendChild(el);
                   groupOutlineElsRef.current[def.key] = el;
                 }
+                // Update theme each render in case system theme toggles
+                try {
+                  const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  el.style.border = dark ? '1px solid rgba(148,163,184,0.9)' : '1px solid rgba(71,85,105,0.6)';
+                  el.style.background = dark ? 'rgba(148,163,184,0.06)' : 'rgba(2,6,23,0.06)';
+                  const label = el.lastChild as HTMLDivElement;
+                  if (label) {
+                    label.style.color = dark ? '#e5e7eb' : '#111827';
+                    label.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                  }
+                } catch {}
                 const label = el.lastChild as HTMLDivElement;
                 // Position outline div centered at (cx, cy)
                 el.style.left = `${Math.round(cx - r)}px`;
@@ -1129,14 +1155,22 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
                 if (!el) {
                   el = document.createElement('div');
                   el.style.position = 'absolute';
-                  el.style.color = '#e5e7eb';
+                  try {
+                    const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    el.style.color = dark ? '#e5e7eb' : '#111827';
+                    el.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                  } catch { el.style.color = '#e5e7eb'; }
                   el.style.fontSize = '12px';
                   el.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
                   el.style.pointerEvents = 'none';
-                  el.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
                   clusterLabelElsRef.current[nid] = el;
                   layer.appendChild(el);
                 }
+                try {
+                  const dark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  el.style.color = dark ? '#e5e7eb' : '#111827';
+                  el.style.textShadow = dark ? '0 1px 2px rgba(0,0,0,0.6)' : '0 1px 2px rgba(255,255,255,0.6)';
+                } catch {}
                 el.textContent = cnt ? `${name} (${cnt})` : name;
                 el.style.left = `${Math.round(pos.x)}px`;
                 el.style.top = `${Math.round(pos.y - 16)}px`;

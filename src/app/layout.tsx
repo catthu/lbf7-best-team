@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Script from "next/script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,12 +25,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head></head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
+        suppressHydrationWarning
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100`}
       >
         <div className="min-h-screen flex flex-col">
-          <header className="sticky top-0 z-20 bg-gray-900 text-gray-100 border-b border-gray-800">
+          <header className="sticky top-0 z-20 bg-gray-50 text-gray-900 border-b border-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-800">
             <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-12 flex items-center justify-between">
               <div className="flex items-center gap-6 text-sm">
                 <Link href="/" className="font-semibold hover:text-white">
@@ -42,6 +45,7 @@ export default function RootLayout({
                   Pathways
                 </Link>
               </div>
+              <div />
             </nav>
           </header>
           <main className="relative flex-1 overflow-hidden">{children}</main>

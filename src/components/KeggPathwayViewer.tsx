@@ -606,7 +606,7 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
   return (
     <div className="w-full">
       <div className="flex gap-3 items-center mb-4">
-        <div className="text-sm text-gray-600 font-medium">Pathway: {pathwayId}</div>
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pathway: {pathwayId}</div>
         {status && <div className="text-sm text-amber-700 font-medium">{status}</div>}
       </div>
       <div className="flex justify-center overflow-auto relative">
