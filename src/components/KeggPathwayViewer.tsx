@@ -277,6 +277,7 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
   const [mapDims, setMapDims] = useState({ w: 1200, h: 1200 });
   const tooltipLayerRef = useRef<HTMLDivElement | null>(null);
   const selectedLowerRef = useRef<Set<string>>(new Set());
+  const [toast, setToast] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -441,6 +442,8 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
             if (nodeType === 'gene') {
               const syms = (n.data('symbols') as string[] | undefined) || ([(n.data('label') as string) || ''].filter(Boolean));
               if (onSelectSymbols && syms && syms.length) onSelectSymbols(syms);
+              // Clear any previous edge toast
+              setToast('');
             }
           } catch {}
         });
@@ -454,6 +457,7 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
             const symsS: string[] = (s?.data('symbols') as string[] | undefined) || ([(s?.data('label') as string) || ''].filter(Boolean));
             const symsT: string[] = (t?.data('symbols') as string[] | undefined) || ([(t?.data('label') as string) || ''].filter(Boolean));
             if (onSelectEdge) onSelectEdge({left: symsS, right: symsT});
+            setToast('');
           } catch {}
         });
         cy.resize();
@@ -488,24 +492,43 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
             if (!cancelled) setStatus("");
           } finally {
             try {
-              // Build full gene list: include all gene IDs present on nodes (including multi-gene entries)
+              // Build full gene and name list: include all gene IDs present on nodes
+              // and expand names to include primary symbols, synonyms, and fallback labels
               const allGeneIds: string[] = [];
+              const allNames: Set<string> = new Set();
+              const addName = (nm: string | undefined | null) => {
+                const t = (nm || '').trim();
+                if (!t) return;
+                allNames.add(t);
+              };
               geneNodes.forEach((n) => {
                 const keggId: string | undefined = n.data('keggId');
                 if (!keggId) return;
                 const ids = keggId.split(/\s+/).filter(id => id.startsWith('hsa:'));
                 for (const id of ids) allGeneIds.push(id);
-                // attach symbols to node for cross-highlighting
-                const syms: string[] = ids.map((gid) => (geneNameCache.get(gid)?.symbol || '')).filter(Boolean);
-                if (syms.length === 0) {
-                  const lbl = (n.data('label') as string) || '';
-                  if (lbl) syms.push(lbl);
+                const nodeNames: Set<string> = new Set();
+                ids.forEach((gid) => {
+                  const gd = geneNameCache.get(gid);
+                  if (gd) {
+                    addName(gd.symbol);
+                    nodeNames.add(gd.symbol);
+                    if (gd.synonyms && gd.synonyms.length) {
+                      gd.synonyms.forEach((s) => { addName(s); nodeNames.add(s); });
+                    }
+                  }
+                });
+                // Fallback: include displayed label and rawLabel tokens
+                const lbl = (n.data('label') as string) || '';
+                if (lbl) { addName(lbl); nodeNames.add(lbl); }
+                const raw = (n.data('rawLabel') as string) || '';
+                if (raw) {
+                  raw.split(/[;,]/).map(s => s.trim()).forEach(tok => { if (tok) { addName(tok); nodeNames.add(tok); } });
                 }
-                n.data('symbols', syms);
+                n.data('symbols', Array.from(nodeNames));
               });
               const uniqIds = Array.from(new Set(allGeneIds));
-              const symbols: string[] = uniqIds.map((gid) => (geneNameCache.get(gid)?.symbol || gid));
-              if (!cancelled) { onProteinSet && onProteinSet({geneIds: uniqIds, symbols}); }
+              const uniqNames = Array.from(allNames);
+              if (!cancelled) { onProteinSet && onProteinSet({geneIds: uniqIds, symbols: uniqNames}); }
             } catch {}
           }
         }, 100);
@@ -532,6 +555,9 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
         const hit = syms.some((s) => list.includes((s || '').toLowerCase()));
         if (hit) n.addClass('xhl');
       });
+      // Show toast if nothing matched
+      const anyMatch = cy.nodes('.xhl').length > 0;
+      setToast(anyMatch ? '' : 'Not found in pathway drawing');
     } catch {}
   }, [selectedSymbols?.join(',')]);
 
@@ -572,6 +598,8 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
         }
         if (match) e.addClass('xhl');
       });
+      const anyMatch = cy.edges('.xhl').length > 0;
+      setToast(anyMatch ? '' : 'Edge not found in pathway drawing');
     } catch {}
   }, [selectedEdge ? `${(selectedEdge.left||[]).join(',')}|${(selectedEdge.right||[]).join(',')}` : '']);
 
@@ -581,8 +609,13 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
         <div className="text-sm text-gray-600 font-medium">Pathway: {pathwayId}</div>
         {status && <div className="text-sm text-amber-700 font-medium">{status}</div>}
       </div>
-      <div className="flex justify-center overflow-auto">
+      <div className="flex justify-center overflow-auto relative">
         <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 shadow" style={{ width: mapDims.w, height: mapDims.h }} />
+        {toast ? (
+          <div className="absolute right-3 top-3 z-10 bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-xs text-gray-800 dark:text-gray-100 shadow">
+            {toast}
+          </div>
+        ) : null}
       </div>
       {sideInfo && (
         <div className="fixed left-6 bottom-6 w-[720px] max-w-[92vw] bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-xl z-50 overflow-y-auto text-gray-900 dark:text-gray-100">

@@ -92,12 +92,12 @@ export default function PathwaysPage() {
               } else {
                 try { console.log('[PathwaysPage] onProteinSet ignored duplicate'); } catch {}
               }
-            }} selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => setSelectedEdge(pair)} />
+            }} selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => { setSelectedEdge(pair); setSelectedSymbols([]); }} />
           </div>
           <div className="p-6">
             <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-200">Proteins + neighbors</h3>
             <div className="h-[720px] rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <PathwayNeighborGraph key={`${pathway}:${graphVersion}`} pathwayId={pathway} version={graphVersion} proteinSymbols={proteinSymbols} className="w-full h-full" selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => setSelectedEdge(pair)} />
+              <PathwayNeighborGraph key={`${pathway}:${graphVersion}`} pathwayId={pathway} version={graphVersion} proteinSymbols={proteinSymbols} className="w-full h-full" selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => { setSelectedEdge(pair); setSelectedSymbols([]); }} />
             </div>
           </div>
         </div>
