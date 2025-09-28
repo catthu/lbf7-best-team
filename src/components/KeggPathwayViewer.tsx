@@ -269,7 +269,7 @@ function divergingColor(v: number) {
   return `rgb(${r},${g},${b})`;
 }
 
-export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay = {}, showNodeLabels = true, onProteinSet, selectedSymbols, onSelectSymbols }: {pathwayId?: string; edgeOverlay?: Record<string, number>; showNodeLabels?: boolean; onProteinSet?: (payload: {geneIds: string[]; symbols: string[]}) => void; selectedSymbols?: string[]; onSelectSymbols?: (symbols: string[]) => void}) {
+export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay = {}, showNodeLabels = true, onProteinSet, selectedSymbols, onSelectSymbols, selectedEdge, onSelectEdge }: {pathwayId?: string; edgeOverlay?: Record<string, number>; showNodeLabels?: boolean; onProteinSet?: (payload: {geneIds: string[]; symbols: string[]}) => void; selectedSymbols?: string[]; onSelectSymbols?: (symbols: string[]) => void; selectedEdge?: {left: string[]; right: string[]}; onSelectEdge?: (pair: {left: string[]; right: string[]}) => void}) {
   const cyRef = useRef<cytoscape.Core | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("Loading KGML…");
@@ -342,8 +342,11 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
               "text-border-width": 1,
               "text-border-color": labelBorderColor,
               "text-border-opacity": 0.8,
-              color: labelTextColor
+            color: labelTextColor,
+            "transition-property": "line-color, width",
+            "transition-duration": 160
             }},
+          { selector: "edge.xhl", style: { "line-color": "#f59e0b", width: 4 } },
             { selector: "edge[isInhibition='true']", style: { "line-color": "#cc0000", "target-arrow-color": "#cc0000", "target-arrow-shape": "tee" } },
             { selector: "edge[subtype*='activation']", style: { "line-color": "#0066cc", "target-arrow-color": "#0066cc", "target-arrow-shape": "triangle" } },
             { selector: "edge[subtype*='binding']", style: { "line-color": "#999", "line-style": "dashed", "target-arrow-shape": "none" } },
@@ -441,6 +444,18 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
             }
           } catch {}
         });
+        cy.on("tap", "edge", (evt) => {
+          try {
+            const e = evt.target as any;
+            const src = e.data('source');
+            const tgt = e.data('target');
+            const s = cy.getElementById(src);
+            const t = cy.getElementById(tgt);
+            const symsS: string[] = (s?.data('symbols') as string[] | undefined) || ([(s?.data('label') as string) || ''].filter(Boolean));
+            const symsT: string[] = (t?.data('symbols') as string[] | undefined) || ([(t?.data('label') as string) || ''].filter(Boolean));
+            if (onSelectEdge) onSelectEdge({left: symsS, right: symsT});
+          } catch {}
+        });
         cy.resize();
         const bb = cy.nodes().boundingBox();
         const containerHeight = containerRef.current?.clientHeight || mapH;
@@ -490,7 +505,7 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
               });
               const uniqIds = Array.from(new Set(allGeneIds));
               const symbols: string[] = uniqIds.map((gid) => (geneNameCache.get(gid)?.symbol || gid));
-              onProteinSet && onProteinSet({geneIds: uniqIds, symbols});
+              if (!cancelled) { onProteinSet && onProteinSet({geneIds: uniqIds, symbols}); }
             } catch {}
           }
         }, 100);
@@ -519,6 +534,46 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
       });
     } catch {}
   }, [selectedSymbols?.join(',')]);
+
+  // Edge cross-highlight from parent
+  React.useEffect(() => {
+    const cy = cyRef.current as any;
+    if (!cy) return;
+    try {
+      cy.edges().removeClass('xhl');
+      const L = new Set((selectedEdge?.left || []).map((s) => (s || '').toLowerCase()));
+      const R = new Set((selectedEdge?.right || []).map((s) => (s || '').toLowerCase()));
+      if (!L.size || !R.size) return;
+      cy.edges().forEach((e: any) => {
+        const s = cy.getElementById(e.data('source'));
+        const t = cy.getElementById(e.data('target'));
+        const sNames: string[] = [
+          ...(((s?.data('symbols') as string[]) || []).map((x) => (x || '').toLowerCase())),
+          (((s?.data('label') as string) || '').toLowerCase()),
+        ].filter(Boolean);
+        const tNames: string[] = [
+          ...(((t?.data('symbols') as string[]) || []).map((x) => (x || '').toLowerCase())),
+          (((t?.data('label') as string) || '').toLowerCase()),
+        ].filter(Boolean);
+        let match = false;
+        for (const a of sNames) {
+          if (L.has(a)) {
+            for (const b of tNames) { if (R.has(b)) { match = true; break; } }
+          }
+          if (match) break;
+        }
+        if (!match) {
+          for (const a of sNames) {
+            if (R.has(a)) {
+              for (const b of tNames) { if (L.has(b)) { match = true; break; } }
+            }
+            if (match) break;
+          }
+        }
+        if (match) e.addClass('xhl');
+      });
+    } catch {}
+  }, [selectedEdge ? `${(selectedEdge.left||[]).join(',')}|${(selectedEdge.right||[]).join(',')}` : '']);
 
   return (
     <div className="w-full">

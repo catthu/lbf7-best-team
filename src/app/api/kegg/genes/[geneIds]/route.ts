@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(req: NextRequest, { params }: { params: { geneIds: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ geneIds: string }> }) {
   try {
-    const { geneIds } = params;
+    const { geneIds } = await ctx.params;
     const keggIds = geneIds.replace(/,/g, '+');
     const response = await fetch(`https://rest.kegg.jp/get/${keggIds}`);
     const text = await response.text();

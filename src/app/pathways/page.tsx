@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import KeggPathwayViewer from "@/components/KeggPathwayViewer";
 import PathwayNeighborGraph from "@/components/PathwayNeighborGraph";
 
@@ -11,6 +11,9 @@ export default function PathwaysPage() {
   const [proteinIds, setProteinIds] = useState<string[]>([]);
   const [proteinSymbols, setProteinSymbols] = useState<string[]>([]);
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [selectedEdge, setSelectedEdge] = useState<{left: string[]; right: string[]} | undefined>(undefined);
+  const [graphVersion, setGraphVersion] = useState(0);
+  const lastDataHashRef = useRef<string>("");
 
   const sampleOverlay = useMemo<Record<string, number>>(() => ({
     "78|79": -0.8,
@@ -18,6 +21,14 @@ export default function PathwaysPage() {
     "83|84": 0.5,
     "85|86": -0.3,
   }), []);
+
+  // Immediately clear right-hand graph when pathway changes to avoid visual stacking/flash
+  React.useEffect(() => {
+    setProteinSymbols([]);
+    setProteinIds([]);
+    setSelectedSymbols([]);
+    setSelectedEdge(undefined);
+  }, [pathway]);
 
   return (
     <div className="w-full h-full overflow-auto p-6 space-y-6 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -70,12 +81,23 @@ export default function PathwaysPage() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-0">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
           <div className="border-r border-gray-200 dark:border-gray-700 p-6">
-            <KeggPathwayViewer pathwayId={pathway} edgeOverlay={sampleOverlay} showNodeLabels={showLabels} onProteinSet={({geneIds, symbols}) => { setProteinIds(geneIds); setProteinSymbols(symbols); }} selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => setSelectedSymbols(syms)} />
+            <KeggPathwayViewer pathwayId={pathway} edgeOverlay={sampleOverlay} showNodeLabels={showLabels} onProteinSet={({geneIds, symbols}) => { 
+              try { console.log('[PathwaysPage] onProteinSet', {pathway, geneIds: geneIds.length, symbols: symbols.length}); } catch {};
+              const hash = `${pathway}|${symbols.length}|${symbols.slice().sort().join('|')}`;
+              if (hash !== lastDataHashRef.current) {
+                lastDataHashRef.current = hash;
+                setProteinIds(geneIds);
+                setProteinSymbols(symbols);
+                setGraphVersion((v) => v + 1);
+              } else {
+                try { console.log('[PathwaysPage] onProteinSet ignored duplicate'); } catch {}
+              }
+            }} selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => setSelectedEdge(pair)} />
           </div>
           <div className="p-6">
             <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-200">Proteins + neighbors</h3>
             <div className="h-[720px] rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <PathwayNeighborGraph proteinSymbols={proteinSymbols} className="w-full h-full" selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => setSelectedSymbols(syms)} />
+              <PathwayNeighborGraph key={`${pathway}:${graphVersion}`} pathwayId={pathway} version={graphVersion} proteinSymbols={proteinSymbols} className="w-full h-full" selectedSymbols={selectedSymbols} onSelectSymbols={(syms) => { setSelectedSymbols(syms); setSelectedEdge(undefined); }} selectedEdge={selectedEdge} onSelectEdge={(pair) => setSelectedEdge(pair)} />
             </div>
           </div>
         </div>
