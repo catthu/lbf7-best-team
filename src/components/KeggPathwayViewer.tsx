@@ -296,7 +296,8 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
         const cy = cytoscape({
           container: containerRef.current as any,
           elements: [...nodes, ...edges],
-          wheelSensitivity: 0.2,
+          // Halve zoom sensitivity (Cytoscape's higher value = faster zoom). 0.2 -> 0.1
+          wheelSensitivity: 0.1,
           motionBlur: false,
           textureOnViewport: true,
           boxSelectionEnabled: true,
@@ -358,6 +359,17 @@ export default function KeggPathwayViewer({ pathwayId = "hsa04150", edgeOverlay 
           layout: { name: "preset", fit: false }
         });
         cy.nodes().positions((n) => { const e = (entries as any)[n.id()]; return { x: e.x, y: e.y }; });
+        // Prevent zooming out beyond initial fit (allow 10% extra)
+        try {
+          const bb = cy.elements().boundingBox();
+          const vw = Math.max(1, cy.width());
+          const vh = Math.max(1, cy.height());
+          const pad = Math.min(220, Math.max(100, Math.min(vw, vh) * 0.10));
+          const wr = (vw - 2 * pad) / Math.max(1, bb.w);
+          const hr = (vh - 2 * pad) / Math.max(1, bb.h);
+          const fitZoom = Math.max(0.0001, Math.min(wr, hr));
+          cy.minZoom(fitZoom * 0.9);
+        } catch {}
         if (containerRef.current) {
           containerRef.current.style.backgroundImage = "none";
           const prefersDarkNow = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;

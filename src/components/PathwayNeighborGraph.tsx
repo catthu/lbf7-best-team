@@ -219,6 +219,9 @@ export default function PathwayNeighborGraph({ proteinSymbols, className, select
           container: mountEl as any,
           elements: [],
           layout: { name: "preset" },
+          // Gentler zoom interactions
+          wheelSensitivity: 0.1,
+          // We'll set minZoom dynamically after initial fit to prevent further zooming out
           style: [
                 { selector: 'node', style: { 
                   'background-color': '#9ca3af',
@@ -255,6 +258,17 @@ export default function PathwayNeighborGraph({ proteinSymbols, className, select
         log('graph populated', {build: myBuildId, nodes: nodes.length, edges: edges.length});
         try {
           cy.layout({ name: 'cose', animate: false, nodeRepulsion: 50000 }).run();
+        } catch {}
+        // Capture initial fit and prevent zooming out beyond it (allow 10% extra)
+        try {
+          const bb = cy.elements().boundingBox();
+          const vw = Math.max(1, cy.width());
+          const vh = Math.max(1, cy.height());
+          const pad = Math.min(220, Math.max(100, Math.min(vw, vh) * 0.10));
+          const wr = (vw - 2 * pad) / Math.max(1, bb.w);
+          const hr = (vh - 2 * pad) / Math.max(1, bb.h);
+          const fitZoom = Math.max(0.0001, Math.min(wr, hr));
+          cy.minZoom(fitZoom * 0.9);
         } catch {}
         builtKeyRef.current = key;
         try { (window as any).__neighborActiveKey = key; (window as any).__neighborOwner = instanceIdRef.current; } catch {}

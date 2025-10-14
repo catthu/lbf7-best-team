@@ -85,6 +85,10 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
   const clusterLabelElsRef = React.useRef<Record<string, HTMLDivElement>>({});
   const groupOutlineLayerRef = React.useRef<HTMLDivElement | null>(null);
   const groupOutlineElsRef = React.useRef<Record<string, HTMLDivElement>>({});
+  // Disallow zooming out beyond the initial default view (both modes)
+  const maxZoomOutRatioRef = React.useRef<number | null>(null);
+  const fitScaleRef = React.useRef<number>(1);
+  const minCanvasScaleRef = React.useRef<number | null>(null);
 
   function normalizeGeneKey(q: string) {
     return (q || '').trim().toLowerCase();
@@ -493,6 +497,8 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           const tx = padding - minX * scale + (width - (dx * scale + 2 * padding)) / 2;
           const ty = padding - minY * scale + (height - (dy * scale + 2 * padding)) / 2;
           viewRef.current = {scale, tx, ty};
+          // Allow 10% extra zoom-out on canvas fallback
+          minCanvasScaleRef.current = scale * 0.9;
         }
 
         computeFit();
@@ -586,7 +592,8 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           const y = ev.clientY - rect.top;
           const worldBefore = screenToWorld({x, y});
           const factor = Math.exp(-ev.deltaY * 0.001);
-          const newScale = Math.min(4, Math.max(0.1, viewRef.current.scale * factor));
+          const minScale = (minCanvasScaleRef.current || 0.1);
+          const newScale = Math.min(4, Math.max(minScale, viewRef.current.scale * factor));
           viewRef.current.scale = newScale;
           const screenAfter = {x: worldBefore.x * newScale + viewRef.current.tx, y: worldBefore.y * newScale + viewRef.current.ty};
           viewRef.current.tx += x - screenAfter.x;
@@ -788,6 +795,7 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           const s = new Sigma(g, container, {
             renderLabels: true,
             labelRenderedSizeThreshold: 999999,
+            // minCameraRatio will be enforced dynamically based on initial fit
             minCameraRatio: 0.01,
             maxCameraRatio: 10,
           });
@@ -878,11 +886,15 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
             let cy = st.y;
             const nx = clamp(st.x, mx, 1 - mx);
             const ny = clamp(st.y, my, 1 - my);
-            if (Math.abs(nx - st.x) > 1e-3 || Math.abs(ny - st.y) > 1e-3) {
+            // Enforce max zoom-out (minimum zoom level) to initial default ratio
+            let ratio = st.ratio;
+            const maxOut = maxZoomOutRatioRef.current;
+            if (typeof maxOut === 'number') ratio = Math.min(ratio, maxOut);
+            if (Math.abs(nx - st.x) > 1e-3 || Math.abs(ny - st.y) > 1e-3 || Math.abs(ratio - st.ratio) > 1e-3) {
               if (isDebug()) console.log("[Graph] cam clamp", {from: st, to: {x: nx, y: ny}, margins: {mx, my}});
               cx = nx; cy = ny;
               isClampingRef.current = true;
-              cam.setState({x: cx, y: cy, ratio: st.ratio, angle: st.angle});
+              cam.setState({x: cx, y: cy, ratio, angle: st.angle});
               isClampingRef.current = false;
             }
           } catch {}
@@ -1072,9 +1084,58 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           }
         };
         s.getCamera().on("updated", onCamUpdate);
+
+        // Make wheel zoom less sensitive and anchor zoom under the cursor.
+        try {
+          const wheelListener = (e: WheelEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            try {
+              const cam = s.getCamera();
+              const st = cam.getState();
+              const k = 0.0005; // sensitivity
+              const zoomFactor = Math.exp(e.deltaY * k);
+              const minR = 0.01;
+              const maxR = 10;
+              const maxOut = typeof maxZoomOutRatioRef.current === 'number' ? maxZoomOutRatioRef.current! : maxR;
+              const newRatio = Math.max(minR, Math.min(Math.min(maxR, maxOut), st.ratio * zoomFactor));
+
+              // Anchor zoom under mouse using correct Sigma ratio semantics (ratio is vertical span)
+              const rect = container.getBoundingClientRect();
+              const W = Math.max(1, container.clientWidth || rect.width || 1);
+              const H = Math.max(1, container.clientHeight || rect.height || 1);
+              const px = (e.clientX - rect.left);
+              const py = (e.clientY - rect.top);
+              // Normalized offsets relative to height
+              const u = (px - W / 2) / H;
+              const v = (py - H / 2) / H;
+              const xg = st.x + u * st.ratio;
+              const yg = st.y + v * st.ratio;
+              let nx = xg - u * newRatio;
+              let ny = yg - v * newRatio;
+              const mx = newRatio / 2;
+              const my = newRatio / 2;
+              nx = Math.max(mx, Math.min(1 - mx, nx));
+              ny = Math.max(my, Math.min(1 - my, ny));
+              cam.setState({ x: nx, y: ny, ratio: newRatio, angle: st.angle });
+            } catch {}
+          };
+          container.addEventListener('wheel', wheelListener, { passive: false, capture: true });
+          (s as any)._gentleWheel = wheelListener;
+          (s as any)._containerEl = container;
+        } catch {}
         updateLOD();
         // Force an initial label render (especially when switching to locality view)
         try { onCamUpdate(); } catch {}
+
+        // After first refresh, capture the default-fit ratio as the maximum zoom-out
+        try {
+          const cam = s.getCamera();
+          const st = cam.getState();
+          // Allow 10% extra zoom-out beyond the default fit
+          maxZoomOutRatioRef.current = st.ratio * 1.1;
+        } catch {}
 
         // Hover focus: zoom to node, show only neighbors, show neighbor edges
         const setHovered = throttle((node?: string) => {
@@ -1288,7 +1349,7 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
                 }
               }
             }
-          } else if (focusedNodeRef.current) {
+            } else if (focusedNodeRef.current) {
             // Defer defocus slightly to avoid flicker when camera moves node under cursor
             if (defocusTimerRef.current) window.clearTimeout(defocusTimerRef.current);
             defocusTimerRef.current = window.setTimeout(() => {
@@ -1296,8 +1357,9 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
               const st = prevCamStateRef.current || {ratio: 1};
               try {
                 isAnimatingRef.current = true;
-                (cam as any).animate(st, {duration: 500, easing: 'quadraticInOut'} as any);
-                window.setTimeout(() => { isAnimatingRef.current = false; }, 520);
+                // Make defocus-to-default-view fast again while keeping manual wheel zoom gentle
+                (cam as any).animate(st, {duration: 220, easing: 'quadraticInOut'} as any);
+                window.setTimeout(() => { isAnimatingRef.current = false; }, 240);
               } catch { cam.setState(st); isAnimatingRef.current = false; }
               focusedNodeRef.current = null;
               setFocusedInfo(null);
@@ -1659,8 +1721,10 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
               const worldBefore = screenToWorld({x, y});
               // Cancel any running hover animation on wheel
               animToken += 1; isAnimating = false;
-              const factor = Math.exp(-ev.deltaY * 0.001);
-              const newScale = Math.min(4, Math.max(0.1, viewRef.current.scale * factor));
+              // Halve zoom sensitivity
+              const factor = Math.exp(-ev.deltaY * 0.0005);
+              const minScale = (minCanvasScaleRef.current || 0.1);
+              const newScale = Math.min(4, Math.max(minScale, viewRef.current.scale * factor));
               viewRef.current.scale = newScale;
               const worldAfter = worldBefore;
               const screenAfter = {x: worldAfter.x * newScale + viewRef.current.tx, y: worldAfter.y * newScale + viewRef.current.ty};
@@ -1715,6 +1779,12 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
       disposed = true;
       const s: any = sigmaRef.current;
       if (s?._ro) try { s._ro.disconnect(); } catch {}
+      try {
+        // Remove gentle wheel interceptor if present
+        const el = (s as any)?._containerEl as HTMLElement | undefined;
+        const wl = (s as any)?._gentleWheel as any;
+        if (el && wl) el.removeEventListener('wheel', wl as any, { capture: true } as any);
+      } catch {}
       sigmaRef.current?.kill();
       sigmaRef.current = null;
       graphRef.current = null;
