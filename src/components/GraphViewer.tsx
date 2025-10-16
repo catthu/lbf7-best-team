@@ -1085,45 +1085,81 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
         };
         s.getCamera().on("updated", onCamUpdate);
 
-        // Make wheel zoom less sensitive and anchor zoom under the cursor.
+        // Gentle wheel: mark wheel events and blend Sigma's camera update afterwards to keep native centering
         try {
-          const wheelListener = (e: WheelEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
+          const gentle = {
+            prev: s.getCamera().getState(),
+            ts: 0,
+            active: false,
+            wheel: false,
+          } as any;
+          (s as any)._gentleState = gentle;
+          const onWheelPre = (e: WheelEvent) => {
+            // Block further zooming out beyond maxOut and mark gentle handling
             try {
-              const cam = s.getCamera();
-              const st = cam.getState();
-              const k = 0.0005; // sensitivity
-              const zoomFactor = Math.exp(e.deltaY * k);
-              const minR = 0.01;
-              const maxR = 10;
-              const maxOut = typeof maxZoomOutRatioRef.current === 'number' ? maxZoomOutRatioRef.current! : maxR;
-              const newRatio = Math.max(minR, Math.min(Math.min(maxR, maxOut), st.ratio * zoomFactor));
-
-              // Anchor zoom under mouse using correct Sigma ratio semantics (ratio is vertical span)
-              const rect = container.getBoundingClientRect();
-              const W = Math.max(1, container.clientWidth || rect.width || 1);
-              const H = Math.max(1, container.clientHeight || rect.height || 1);
-              const px = (e.clientX - rect.left);
-              const py = (e.clientY - rect.top);
-              // Normalized offsets relative to height
-              const u = (px - W / 2) / H;
-              const v = (py - H / 2) / H;
-              const xg = st.x + u * st.ratio;
-              const yg = st.y + v * st.ratio;
-              let nx = xg - u * newRatio;
-              let ny = yg - v * newRatio;
-              const mx = newRatio / 2;
-              const my = newRatio / 2;
-              nx = Math.max(mx, Math.min(1 - mx, nx));
-              ny = Math.max(my, Math.min(1 - my, ny));
-              cam.setState({ x: nx, y: ny, ratio: newRatio, angle: st.angle });
+              const st = s.getCamera().getState();
+              const maxOut = typeof maxZoomOutRatioRef.current === 'number' ? maxZoomOutRatioRef.current! : 10;
+              if (e.deltaY > 0 && st.ratio >= maxOut - 1e-4) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return;
+              }
+            } catch {}
+            gentle.prev = s.getCamera().getState();
+            gentle.ts = Date.now();
+            gentle.wheel = true;
+          };
+          container.addEventListener('wheel', (e: WheelEvent) => {
+            try { (window as any).__lastWheelX = e.clientX; (window as any).__lastWheelY = e.clientY; } catch {}
+            onWheelPre(e);
+          }, { passive: false, capture: true });
+          (s as any)._gentleWheel = onWheelPre;
+          (s as any)._containerEl = container;
+          const cam = s.getCamera();
+          const origOnUpdate = onCamUpdate;
+          const blendFactor = 0.5; // halve sensitivity and movement
+          const onCamUpdateGentle = () => {
+            origOnUpdate();
+            try {
+              if (!gentle.wheel || gentle.active) return;
+              if (Date.now() - gentle.ts > 180) { gentle.wheel = false; return; }
+              const prev = gentle.prev;
+              const now = cam.getState();
+              // Blend towards Sigma's computed state to reduce step while keeping centering
+              const x = prev.x + (now.x - prev.x) * blendFactor;
+              const y = prev.y + (now.y - prev.y) * blendFactor;
+              const ratioRaw = prev.ratio + (now.ratio - prev.ratio) * blendFactor;
+              const maxOut = typeof maxZoomOutRatioRef.current === 'number' ? maxZoomOutRatioRef.current! : 10;
+              const ratio = Math.min(maxOut, Math.max(0.01, ratioRaw));
+              // If Sigma computed a ratio beyond our clamp, also re-center to keep cursor stable
+              if (now.ratio > maxOut + 1e-6) {
+                try {
+                  const rect = container.getBoundingClientRect();
+                  const px = Math.max(0, Math.min(rect.width, (window as any).__lastWheelX ?? rect.width / 2));
+                  const py = Math.max(0, Math.min(rect.height, (window as any).__lastWheelY ?? rect.height / 2));
+                  const W = Math.max(1, container.clientWidth || rect.width || 1);
+                  const H = Math.max(1, container.clientHeight || rect.height || 1);
+                  const u = (px - W / 2) / H;
+                  const v = (py - H / 2) / H;
+                  const xg = prev.x + u * prev.ratio;
+                  const yg = prev.y + v * prev.ratio;
+                  const nx = xg - u * ratio;
+                  const ny = yg - v * ratio;
+                  gentle.active = true;
+                  cam.setState({ x: nx, y: ny, ratio, angle: now.angle });
+                  gentle.active = false;
+                  gentle.wheel = false;
+                  return;
+                } catch {}
+              }
+              gentle.active = true;
+              cam.setState({ x, y, ratio, angle: now.angle });
+              gentle.active = false;
+              gentle.wheel = false;
             } catch {}
           };
-          container.addEventListener('wheel', wheelListener, { passive: false, capture: true });
-          (s as any)._gentleWheel = wheelListener;
-          (s as any)._containerEl = container;
+          cam.on('updated', onCamUpdateGentle);
         } catch {}
         updateLOD();
         // Force an initial label render (especially when switching to locality view)
@@ -1135,6 +1171,7 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           const st = cam.getState();
           // Allow 10% extra zoom-out beyond the default fit
           maxZoomOutRatioRef.current = st.ratio * 1.1;
+          try { (s as any).setSetting('maxCameraRatio', maxZoomOutRatioRef.current); } catch {}
         } catch {}
 
         // Hover focus: zoom to node, show only neighbors, show neighbor edges
