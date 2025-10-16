@@ -22,7 +22,7 @@ function throttle<T extends unknown[]>(fn: (...args: T) => void, ms: number) {
   };
 }
 
-export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'default' | 'locality' }) {
+export default function GraphViewer({ initialViewMode, initialFocus }: { initialViewMode?: 'default' | 'locality'; initialFocus?: string }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const sigmaRef = React.useRef<any>(null);
   const graphRef = React.useRef<Graph | null>(null);
@@ -67,6 +67,8 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
   const degreeThresholdRef = React.useRef(degreeThreshold);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchMatches, setSearchMatches] = React.useState<Array<{id: string; name: string}>>([]);
+  // Apply initial URL focus once on mount
+  const initialFocusAppliedRef = React.useRef(false);
   const [showOnlyNew, setShowOnlyNew] = React.useState(false);
   const showOnlyNewRef = React.useRef(showOnlyNew);
   const [confidence, setConfidence] = React.useState(0);
@@ -89,9 +91,54 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
   const maxZoomOutRatioRef = React.useRef<number | null>(null);
   const fitScaleRef = React.useRef<number>(1);
   const minCanvasScaleRef = React.useRef<number | null>(null);
+  const queuedFocusRef = React.useRef<string | null>(null);
+  const initialFocusTimerRef = React.useRef<number | null>(null);
+
+  function kickApplyInitialFocus() {
+    try {
+      if (initialFocusAppliedRef.current) return;
+      const nid = findNodeIdForQuery(initialFocus);
+      if (!nid) return;
+      if (setHoveredRef.current) {
+        initialFocusAppliedRef.current = true;
+        queuedFocusRef.current = null;
+        setHoveredRef.current(nid);
+        return;
+      }
+      if (initialFocusTimerRef.current) window.clearTimeout(initialFocusTimerRef.current);
+      initialFocusTimerRef.current = window.setTimeout(kickApplyInitialFocus, 120);
+    } catch {}
+  }
+
+  function updateProteinParamInUrl(name?: string) {
+    try {
+      const url = new URL(window.location.href);
+      if (name && name.trim()) url.searchParams.set('protein', name.trim());
+      else url.searchParams.delete('protein');
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState(null, '', next);
+    } catch {}
+  }
 
   function normalizeGeneKey(q: string) {
     return (q || '').trim().toLowerCase();
+  }
+
+  function findNodeIdForQuery(query?: string): string | undefined {
+    if (!query) return undefined;
+    const key = normalizeGeneKey(query);
+    const idx = nameIndexRef.current;
+    if (!idx || !idx.length) return undefined;
+    // Exact id or exact name match (case-insensitive)
+    let hit = idx.find((e) => e.nameLower === key || e.id.toLowerCase() === key);
+    if (hit) return hit.id;
+    // Try startsWith on name
+    hit = idx.find((e) => e.nameLower.startsWith(key));
+    if (hit) return hit.id;
+    // Try contains on name
+    hit = idx.find((e) => e.nameLower.includes(key));
+    if (hit) return hit.id;
+    return undefined;
   }
 
   function getGeneFromCache(q: string) {
@@ -906,6 +953,13 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
           (onCamUpdate as any)._t = performance.now();
           updateLOD();
           clampCameraToGraph();
+          // Apply queued initial focus once setHovered is available
+          try {
+            if ((onCamUpdate as any)._applyQueuedFocus && setHoveredRef.current && queuedFocusRef.current) {
+              const id = queuedFocusRef.current; queuedFocusRef.current = null; (onCamUpdate as any)._applyQueuedFocus = false;
+              setHoveredRef.current(id);
+            }
+          } catch {}
           // Render cluster labels in cluster mode (and for locality view always)
           try {
             if (clusterModeRef.current || viewMode === 'locality') {
@@ -1164,6 +1218,10 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
         updateLOD();
         // Force an initial label render (especially when switching to locality view)
         try { onCamUpdate(); } catch {}
+        // Attempt to apply any queued focus once setHovered has been created
+        (onCamUpdate as any)._applyQueuedFocus = true;
+        // Also trigger the kick in case no camera updates run soon
+        try { requestAnimationFrame(() => kickApplyInitialFocus()); } catch {}
 
         // After first refresh, capture the default-fit ratio as the maximum zoom-out
         try {
@@ -1435,7 +1493,21 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
 
           s.refresh();
         }, 24);
-        setHoveredRef.current = (nodeId?: string) => setHovered(nodeId);
+        setHoveredRef.current = (nodeId?: string) => {
+          setHovered(nodeId);
+          try {
+            const name = nodeId ? ((g.getNodeAttribute(nodeId, 'name') as string) || nodeId) : undefined;
+            updateProteinParamInUrl(nodeId ? name : undefined);
+          } catch {}
+        };
+        // Apply any queued initial focus immediately once the focus API is ready (next frames)
+        try {
+          if (queuedFocusRef.current) {
+            const id = queuedFocusRef.current;
+            queuedFocusRef.current = null;
+            requestAnimationFrame(() => requestAnimationFrame(() => setHoveredRef.current?.(id)));
+          }
+        } catch {}
 
         // Lightweight hover preview: show edges + label only, no zoom/pan/size changes
         const previewHover = throttle((node?: string) => {
@@ -1470,6 +1542,10 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
         s.on("clickNode", ({node}) => {
           if (defocusTimerRef.current) { window.clearTimeout(defocusTimerRef.current); defocusTimerRef.current = null; }
           setHovered(node);
+          try {
+            const nm = (g.getNodeAttribute(node, 'name') as string) || node;
+            updateProteinParamInUrl(nm);
+          } catch {}
           const nm = (g.getNodeAttribute(node, 'name') as string) || node;
           if (geneTimerRef.current) { window.clearTimeout(geneTimerRef.current); geneTimerRef.current = null; }
           geneTimerRef.current = window.setTimeout(() => fetchGeneSummary(nm), 150);
@@ -1523,6 +1599,7 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
             g.setEdgeAttribute(e, 'hidden', defaultHidden || hideByNew || hideByConf);
           });
           setHovered(undefined);
+          try { updateProteinParamInUrl(undefined); } catch {}
         });
         // Hover preview handlers (no camera movement)
         s.on("enterNode", ({node}) => {
@@ -1536,6 +1613,17 @@ export default function GraphViewer({ initialViewMode }: { initialViewMode?: 'de
         s.on("leaveNode", () => { previewHover(undefined); if (!focusedNodeRef.current) setGeneInfo(null); });
 
           sigmaRef.current = s;
+          // If initialFocus is present, look up by multiple strategies then queue for apply
+          try {
+            if (!initialFocusAppliedRef.current && initialFocus) {
+              const nid = findNodeIdForQuery(initialFocus);
+              if (nid) {
+                queuedFocusRef.current = nid;
+                // Ensure application soon even if no camera updates happen
+                requestAnimationFrame(() => requestAnimationFrame(() => kickApplyInitialFocus()));
+              }
+            }
+          } catch {}
         } catch (err) {
           console.warn("Sigma WebGL init failed – using Canvas fallback", err);
           // Fallback to simple Canvas2D renderer when WebGL is unavailable
