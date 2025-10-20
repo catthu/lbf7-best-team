@@ -35,3 +35,71 @@ html.dark {
   --background: #0a0a0a;
   --foreground: #ededed;
 }
+
+/* Scoped write-up page heading styles */
+.writeup h2 {
+  font-size: 1.375rem; /* ~22px */
+  line-height: 1.25;
+  font-weight: 700;
+  margin-top: 2.25rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+.dark .writeup h2 {
+  color: #e5e7eb; /* gray-200 */
+}
+.writeup h2::after {
+  content: "";
+  display: block;
+  width: 2.5rem;
+  height: 2px;
+  margin-top: 0.5rem;
+  background: #94a3b8; /* slate-400 */
+}
+
+/* Increase paragraph spacing within write-up pages */
+.writeup p {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Make links stand out within the write-up content */
+.writeup a {
+  color: #3b82f6; /* blue-500 */
+  text-decoration: none;
+  font-weight: 600;
+}
+.dark .writeup a {
+  color: #93c5fd; /* blue-300 */
+}
+.writeup a:hover {
+  color: #2563eb; /* blue-600 */
+}
+.dark .writeup a:hover {
+  color: #60a5fa; /* blue-400 */
+}
+.writeup a:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+.dark .writeup a:focus-visible {
+  outline-color: #93c5fd;
+}
+
+/* Consistent two-column legend layout for write-up illustrations */
+.writeup .legend-2col {
+  display: grid;
+  grid-template-columns: 280px 280px;
+  justify-content: center;
+  align-items: end;
+  column-gap: 6rem;
+  row-gap: 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .writeup .legend-2col {
+    grid-template-columns: 1fr;
+    column-gap: 0;
+    row-gap: 1.25rem;
+  }
+}
