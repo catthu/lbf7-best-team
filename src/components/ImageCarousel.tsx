@@ -31,9 +31,9 @@ export default function ImageCarousel({ images }: { images: CarouselImage[] }) {
         <div className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{current.caption}</div>
       ) : null}
       <div className="mt-3 flex items-center justify-center gap-3">
-        <button onClick={() => go(-1)} className="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">Prev</button>
+        <button onClick={() => go(-1)} className="cursor-pointer rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">Prev</button>
         <div className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{index + 1} / {images.length}</div>
-        <button onClick={() => go(1)} className="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">Next</button>
+        <button onClick={() => go(1)} className="cursor-pointer rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">Next</button>
       </div>
     </div>
   );

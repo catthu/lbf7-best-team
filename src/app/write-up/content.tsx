@@ -125,7 +125,7 @@ export default function Content() {
         <ImageCarousel
             images={[
               { src: "/write-up/images/dark/IGLL1-dark.png", alt: "IGLL1", caption: "IGLL1", href: "/?protein=IGLL1" },
-              { src: "/write-up/images/dark/IGLL5-dark.png", alt: "IGLL5", caption: "IGLL5", href: "https://www.rcsb.org/structure/5G8G" },
+              { src: "/write-up/images/dark/IGLL5-dark.png", alt: "IGLL5", caption: "IGLL5", href: "/?protein=IGLL5" },
             ]}
           />
         <p>Immediately noticeable are two dark blue proteins:  
