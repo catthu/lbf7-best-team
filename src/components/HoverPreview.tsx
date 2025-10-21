@@ -7,9 +7,12 @@ type HoverPreviewProps = {
   previewUrl: string;
   width?: number;
   height?: number;
+  appearance?: 'chip' | 'inline';
+  className?: string; // extra classes for the trigger
+  title?: string; // hover hint
 };
 
-export default function HoverPreview({ children, previewUrl, width = 480, height = 300 }: HoverPreviewProps) {
+export default function HoverPreview({ children, previewUrl, width = 480, height = 300, appearance = 'chip', className = '', title = 'Hover to preview' }: HoverPreviewProps) {
   const [open, setOpen] = React.useState(false);
   const [pos, setPos] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -30,8 +33,17 @@ export default function HoverPreview({ children, previewUrl, width = 480, height
   }, [open]);
 
   return (
-    <span className="relative inline-block" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      {children}
+    <span className="relative inline-block mx-2" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <span
+        className={
+          (appearance === 'chip'
+            ? 'inline-flex items-center rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100 px-2 py-0.5 text-xs font-medium cursor-help hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors'
+            : 'cursor-help') + (className ? ` ${className}` : '')
+        }
+        title={title}
+      >
+        {children}
+      </span>
       {open ? (
         (() => {
           const margin = 12;

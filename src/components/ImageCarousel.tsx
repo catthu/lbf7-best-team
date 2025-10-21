@@ -6,6 +6,7 @@ type CarouselImage = {
   src: string;
   alt?: string;
   caption?: string;
+  href?: string;
 };
 
 export default function ImageCarousel({ images }: { images: CarouselImage[] }) {
@@ -24,7 +25,7 @@ export default function ImageCarousel({ images }: { images: CarouselImage[] }) {
     <div className="group relative w-full select-none">
       <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-black/5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={current.src} alt={current.alt || ""} className="h-full w-full object-contain" />
+        <img src={current.src} alt={current.alt || ""} className={`h-full w-full object-contain ${current.href ? 'cursor-pointer' : ''}`} onClick={current.href ? () => window.open(current.href, '_blank') : undefined} />
       </div>
       {current.caption ? (
         <div className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{current.caption}</div>
@@ -37,6 +38,7 @@ export default function ImageCarousel({ images }: { images: CarouselImage[] }) {
     </div>
   );
 }
+
 
 
 

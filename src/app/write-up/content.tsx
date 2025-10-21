@@ -1,3 +1,4 @@
+import React from "react";
 import ImageCarousel from "@/components/ImageCarousel";
 import HoverPreview from "@/components/HoverPreview";
 import MiniGraph from "@/components/MiniGraph";
@@ -105,10 +106,37 @@ export default function Content() {
           {/* Interactive mini graph illustration */}
           <MiniGraph />
         </div>
+
+        <p>We populated the tool with the <b>80% precision dataset</b>, which has: 12,298 proteins; 29,257 interactions; 7,290 of which are new interactions.</p>
       </section>
 
       <section>
         <h2>The Graph View</h2>
+        <FigureImage
+        lightSrc="/write-up/ppi-overview-light.png"
+        darkSrc="/write-up/images/dark/intro-dark.png"
+        alt="Overview of the PPI graph"
+        caption="In the Graph View, proteins are initially distributed on a donut shape, with larger nodes located closer to the center."
+      />
+      </section>
+
+      <section>
+        <h3>IGLL1 and IGLL5</h3>
+        <ImageCarousel
+            images={[
+              { src: "/write-up/images/dark/IGLL1-dark.png", alt: "IGLL1", caption: "IGLL1", href: "/?protein=IGLL1" },
+              { src: "/write-up/images/dark/IGLL5-dark.png", alt: "IGLL5", caption: "IGLL5", href: "https://www.rcsb.org/structure/5G8G" },
+            ]}
+          />
+        <p>Immediately noticeable are two dark blue proteins:  
+        <HoverPreview previewUrl="/next.svg" title="IGLL1 folded 3D structure">
+          IGLL1 
+        </HoverPreview>
+        (Immunoglobulin Lambda Like Polypeptide 1) and 
+        <HoverPreview previewUrl="/next.svg" title="IGLL5 folded 3D structure">
+        IGLL5 
+        </HoverPreview>
+        (Immunoglobulin Lambda Like Polypeptide 5). New connections are enriched in the immune system proteins category (263 new PPIs), and the majority concentrate specifically on IGLL1 and IGLL5 (171 new PPIs combined). The new predicted interactions for these two proteins are others named IGLV and IGKV (Immunoglobulin Lambda/Kappa Variable chains) – variable regions of antibodies light chains. IGLL1 also has some new interactions with IGHV proteins.</p>
       </section>
   
       <section>

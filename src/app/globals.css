@@ -57,6 +57,25 @@ html.dark {
   background: #94a3b8; /* slate-400 */
 }
 
+/* Scoped write-up subheading styles */
+.writeup h3 {
+  font-size: 1.25rem; /* ~20px */
+  line-height: 1.4;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.005em;
+}
+.dark .writeup h3 { color: #e5e7eb; /* gray-200 */ }
+.writeup h3::after {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 2px;
+  margin-top: 0.35rem;
+  background: #94a3b8; /* slate-400 */
+}
+
 /* Increase paragraph spacing within write-up pages */
 .writeup p {
   margin-top: 1rem;
@@ -102,4 +121,10 @@ html.dark {
     column-gap: 0;
     row-gap: 1.25rem;
   }
+}
+
+/* Base typography tweaks for write-up page */
+.writeup {
+  font-size: 1rem;
+  line-height: 1.75;
 }
