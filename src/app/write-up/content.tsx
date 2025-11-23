@@ -118,9 +118,6 @@ export default function Content() {
         alt="Overview of the PPI graph"
         caption="In the Graph View, proteins are initially distributed on a donut shape, with larger nodes located closer to the center."
       />
-      </section>
-
-      <section>
         <h3>IGLL1 and IGLL5</h3>
         <ImageCarousel
             images={[
@@ -137,50 +134,281 @@ export default function Content() {
         IGLL5 
         </HoverPreview>
         (Immunoglobulin Lambda Like Polypeptide 5). New connections are enriched in the immune system proteins category (263 new PPIs), and the majority concentrate specifically on IGLL1 and IGLL5 (171 new PPIs combined). The new predicted interactions for these two proteins are others named IGLV and IGKV (Immunoglobulin Lambda/Kappa Variable chains) – variable regions of antibodies light chains. IGLL1 also has some new interactions with IGHV proteins.</p>
-      </section>
-  
-      <section>
-        <h2>But first, what do we already know about protein-protein interactions?</h2>
-        <p>
-          Replace this text with your narrative. You can include headings, inline code, blockquotes, lists, and images. This page is intentionally minimal to focus on content.
-        </p>
-        <blockquote>
-          <p>
-            A concise takeaway or quote can go here.
-          </p>
-        </blockquote>
-      </section>
-
-      <section>
-        <h2>Key observations</h2>
-        <ul>
-          <li>Observation one</li>
-          <li>Observation two</li>
-          <li>Observation three</li>
-        </ul>
-      </section>
-
-      <section>
-        <h2>Figures</h2>
-        <p>
-          Drop static images now; later we can enable a carousel and hover previews.
-        </p>
-        <div className="not-prose mt-4">
-          <ImageCarousel
+        <p>The RF/AF model shows high confidence (over 95% confidence) for most of these new connections. After some research (disclaimer: I’m not a biologist), I learned that IGLL1 and IGLL5 are paralogs. IGLL1 expression is silenced and the protein is degraded during light chain production. So while IGLL1 might be able to interact with IGLV and IGKV molecularly, the light chain proteins, they are unlikely to be colocated. IGLL5, on the other hand, might be able to colocate with the IGKVs and IGLVs. It likely interacts with these light chain proteins at their structural regions, which is almost identical in the different light chain proteins. So the numerous interactions with IGLVs and IGKVs make sense.</p>
+        <h3>Other Proteins</h3>
+        <ImageCarousel
             images={[
-              { src: "/graph.svg", alt: "Graph overview", caption: "Graph overview" },
-              { src: "/window.svg", alt: "Window", caption: "Window placeholder" },
+              { src: "/write-up/images/dark/UBE2D1-dark.png", alt: "UBE2D1", caption: "UBE2D1", href: "/?protein=UBE2D1" },
+              { src: "/write-up/images/dark/UBE2D2-dark.png", alt: "UBE2D2", caption: "UBE2D2", href: "/?protein=UBE2D2" },
+              { src: "/write-up/images/dark/UBE2D3-dark.png", alt: "UBE2D3", caption: "UBE2D3", href: "/?protein=UBE2D3" },
             ]}
           />
-        </div>
-        <p className="mt-6">
-          Hover over this label to preview an image:
-          {" "}
-          <HoverPreview previewUrl="/next.svg">
-            <span className="underline decoration-dotted">preview image</span>
-          </HoverPreview>
-        </p>
+        <p>We see some very active and well-understood proteins: UBE2D1, UBE2D2, UBE2D3 — conjugating enzymes involved in protein degradation. The predictions did not yield any new interactions for these proteins. There isn’t an easy way in our visualization tool to compare common interactions; but since these proteins are paralogs, it wouldn’t be surprising to see them share a long list of common interactions.</p>
+        <p>Another such protein is TRIM28, located in the nucleus. This is what GPT5 told me about TRIM28:</p>
+
+        <p>TRIM28 (also known as KAP1, TIF1β, or KRAB-associated protein 1) is one of the most fascinating and multifunctional proteins in mammalian cells.It’s a master transcriptional co-repressor, a chromatin organizer, and a genome stability guardian — especially important in stem cells, early embryos, and virus/retrotransposon silencing.</p>
+
+        <FigureImage
+          lightSrc="/write-up/images/dark/TRIM28-light.png"
+          darkSrc="/write-up/images/dark/TRIM28-dark.png"
+          alt="TRIM28 graph"
+        />
+
+        <p>I suppose it makes sense then that TRIM28 is one of the most connected proteins on this graph, just behind IGLL1, IGLL5 and the UBE2 proteins. It has 66 interactions, all known, compared to an average of 2.37 connections per protein on this graph.</p>
+
+        <h3>Keratins</h3>
+
+        <p>One structural feature of the IGLLs, UBE2s and TRIM28 graphs is that they are mostly star-like: very connected with almost no interconnections. Unlike those proteins, Keratins appear deeply embedded in a highly interconnected network.</p>
+        <FigureImage
+          lightSrc="/write-up/images/dark/KRT8-light.png"
+          darkSrc="/write-up/images/dark/KRT8-dark.png"
+          alt="Interconnected Keratin graph"
+        />
+        <p>I don’t really know what generalization, if any, could be made based on graph topography. Naively, it would seem that a star graph is fragile (failure of the star protein brings about failure in that part of the network) whereas an interconnected graph like Keratins would be robust against small perturbations.</p>
       </section>
+
+      <section>
+        <h2>The Locality View</h2>
+        <FigureImage
+          lightSrc="/write-up/images/dark/locality-light.png"
+          darkSrc="/write-up/images/dark/locality-dark.png"
+          alt="The locality view"
+        />
+        <p>The Locality View clusters proteins based on their location. Locations are broadly grouped into five main categories: Cytoplasm, Nucleus, Mitochondria, and Extra Cellular. Through the exercising of classifying locations into one of these 5 categories, we discovered many locations we never heard of (e.g. the Coated Pit) and noted several ambiguities:</p>
+        <ul>
+          <li>Since most proteins are active in more than one location, each (protein, location) pair is represented separately in this view. On hover or focus, the graph will connect to the instance of the connected protein in the same location first, and will only connect to an instance in a different location if none is found. If there are several suitable locations, it picks the first one it sees. There are about ~4k interactions where the two proteins have no overlapping location and fall into this 1:many or many:many category</li>
+          <li>It’s unclear whether “Cell Membrane” should belong in the Cytoplasm group or the Extra Cellular group. For now it’s located in Extra Cellular</li>
+          <li>There’s also a “Membrane” location that appears to be all encompassing of cell membrane, organelle membrane, nuclear membrane,etc. For now it’s located in the Cytoplasm bucket; but note that depending on which membrane the protein is located, it might not be in the cytoplasm at all</li>
+          <li>The “none” category was placed under Other, along with CF(0) and CF(1) because I couldn’t figure out what they meant at the time of classification. On closer inspection, they appear to be all ATP related and perhaps should be in the Mitochondria group</li>
+          <li>Also under Other is the Amyloid category, which we suspected to be proteins found on Amyloid plaques and should be extra cellular but we weren’t sure</li>
+          <li>The “Secreted” category should be under Extra Cellular but was mistakenly placed under Other (oops)</li>
+        </ul>
+
+        <p>Zooming into each location allows us to see, by relative sizes, the major connecting proteins in that location. For example, zooming into the nucleus we can easily identify these major proteins.</p>
+
+        <ImageCarousel
+          images={[
+            { src: "/write-up/images/dark/TCF4-dark.png", alt: "TCF4", caption: "TCF4", href: "/locality?protein=TCF4+(Nucleus)" },
+            { src: "/write-up/images/dark/TAF1L-dark.png", alt: "TAF1L", caption: "TAF1L", href: "/locality?protein=TAF1L+(Nucleus)" },
+            { src: "/write-up/images/dark/TCF3-dark.png", alt: "TCF3", caption: "TCF3", href: "/locality?protein=TCF3+(Nucleus)" },
+            { src: "/write-up/images/dark/TRIM28-locality-dark.png", alt: "TRIM28", caption: "TRIM28", href: "/locality?protein=TRIM28+(Nucleus)" },
+            { src: "/write-up/images/dark/MED1-dark.png", alt: "MED1", caption: "MED1", href: "/locality?protein=MED1+(Nucleus)" },
+            { src: "/write-up/images/dark/KDM1A-dark.png", alt: "KDM1A", caption: "KDM1A", href: "/locality?protein=KDM1A+(Nucleus)" },
+          ]}
+        />
+
+        <h3>Characterizing Less-Understood Proteins</h3>
+
+        <p>From the paper:</p>
+
+        <blockquote className="not-prose quote-block">
+          <p>These observations support the high accuracy of our predictions and suggest that they can be used to infer the functions and subcellular localizations of poorly characterized proteins by linking them to well-annotated interaction partners.</p>
+        </blockquote>
+
+        <p>I thought we’d look at a few interesting proteins from the “none” cluster to see what insights could be gained from this. While it was a very interesting exercise overall, and I personally learned a lot about many varieties of proteins, I struggled to derive something that can really be called truly novel. Despite having their location as “none” in the Baker’s prediction set, many such proteins already have a presumed location or known interactors from BIOGRID that would allow educated guesses about their function and location. Occasionally, however, the Baker dataset does show predictions for proteins that seem highly related but for which there’s no existing experimental evidence, such as: SAMD12 and CNKSR1/2/3, all related to the EGFR-RAS-ERK signaling pathway; or HPCAL4 and ADAM11/ADAM23, all related to synaptic membrane.</p>
+
+        <p>One protein that did surprise me in this view is SOS1.</p>
+
+        <FigureImage
+          lightSrc="/write-up/images/dark/SOS1-light.png"
+          darkSrc="/write-up/images/dark/SOS1-dark.png"
+          alt="SOS1 locality graph"
+        />
+
+        <p>SOS is known to help activate RAS, a protein that tells cells when to grow and divide. It usually does this at the cell’s outer surface, near the membrane. But it's not common to see it active in the nucleus. After some research, it turns out that there are reports of SOS1’s transient activities near or in the nucleus under stressful situations. The listed nucleus proteins are ATRX, ERCC5, ARHGAP39, RASL11A, and BRD8. BRD8 is a known interactor, identified through an affinity capture screen. There isn’t experimental evidence for the other interactors.</p>
+
+        <h3>Uncharacterized Proteins</h3>
+
+        <p>The paper referenced a database of uncharacterized proteins with unknown functions. I found cross-referencing between this database and ours a bit time consuming, but, inspired by this direction, I investigated a few random uncharacterized locations.</p>
+
+        <p>LOC128125818 is an uncharacterized protein located in the membrane.</p>
+
+        <FigureImage
+          lightSrc="/write-up/images/dark/LOC128125818-light.png"
+          darkSrc="/write-up/images/dark/LOC128125818-dark.png"
+          alt="LOC128125818 locality graph"
+        />
+
+        <p>There is one new predicted interactor for it, a protein called TMEM132B, which is a transmembrane protein -- a class of protein called out by the paper as difficult to screen for interactions experimentally. Not much is known about TMEM132B: it’s likely located on the membrane and is enriched in neurons and synaptic functions.</p>
+        
+        <p>TMEM132B itself also has some new interactions, all at over 90% confidence.</p>
+
+        <FigureImage
+          lightSrc="/write-up/images/dark/TMEM132B-light.png"
+          darkSrc="/write-up/images/dark/TMEM132B-dark.png"
+          alt="TMEM132B graph"
+        />
+
+        <p>LHFPL4 is associated with inhibitory synaptic functions and itself has a new interaction with TMEM132D. This is also a transmembrane protein and, from the naming, probably associated with TMEM132B. All of this is consistent with the TMEM132B - LHFPL4 interaction being real.</p>
+        
+        <FigureImage
+          lightSrc="/write-up/images/dark/TMEM132D-light.png"
+          darkSrc="/write-up/images/dark/TMEM132D-dark.png"
+          alt="TMEM132D graph"
+        />
+
+        <p>Among other proteins purported to interact with TMEM132B, LHFPL3 sounds related to LHFPL4, while CD164 and INAFM1 are both poorly uncharacterized proteins. CD164 is reported to be upregulated in certain cancers.</p>
+
+        <p>I will stop here because, while all this is very interesting, I lack the relevant expertise to say anything meaningful about it. It does feel like there’s something here in this cluster of poorly characterized, newly-connected proteins – maybe a future pathway or mechanism to be discovered!</p>
+
+        <h3>Transcription Factor Topology</h3>
+
+        <p>While looking through the nucleus region, I came up with a game in my head, which I will call “Transcription factor or not?” I talked myself into believing that there’s a graph network topological disposition for transcription factors: they have a very high interconnections to connections ratio.</p>
+
+        <p>For example, these are transcription factors (DNA-binding) or a TF subunit:</p>
+
+        <ImageCarousel
+          images={[
+            { src: "/write-up/images/dark/TCF4-tf-dark.png", alt: "TCF4", caption: "TCF4", href: "/locality?protein=TCF4+(Nucleus)" },
+            { src: "/write-up/images/dark/TAF1L-tf-dark.png", alt: "TAF1L", caption: "TAF1L", href: "/locality?protein=TAF1L+(Nucleus)" },
+            { src: "/write-up/images/dark/TCF3-tf-dark.png", alt: "TCF3", caption: "TCF3", href: "/locality?protein=TCF3+(Nucleus)" },
+            { src: "/write-up/images/dark/ZSCAN20-tf-dark.png", alt: "ZSCAN20", caption: "ZSCAN20", href: "/locality?protein=ZSCAN20+(Nucleus)" },
+            { src: "/write-up/images/dark/SCAND1-tf-dark.png", alt: "SCAND1", caption: "SCAND1", href: "/locality?protein=SCAND1+(Nucleus)" },
+            { src: "/write-up/images/dark/ZNF397-tf-dark.png", alt: "ZNF397", caption: "ZNF397", href: "/locality?protein=ZNF397+(Nucleus)" },
+            { src: "/write-up/images/dark/BATF2-tf-dark.png", alt: "BATF2", caption: "BATF2", href: "/locality?protein=BATF2+(Nucleus)" },
+            { src: "/write-up/images/dark/MYOD1-tf-dark.png", alt: "MYOD1", caption: "MYOD1", href: "/locality?protein=MYOD1+(Nucleus)" },
+            { src: "/write-up/images/dark/ZNF174-tf-dark.png", alt: "ZNF174", caption: "ZNF174", href: "/locality?protein=ZNF174+(Nucleus)" },
+            { src: "/write-up/images/dark/MAX-tf-dark.png", alt: "MAX", caption: "MAX", href: "/locality?protein=MAX+(Nucleus)" },
+            { src: "/write-up/images/dark/HES3-tf-dark.png", alt: "HES3", caption: "HES3", href: "/locality?protein=HES3+(Nucleus)" },
+            { src: "/write-up/images/dark/E2F6-tf-dark.png", alt: "E2F6", caption: "E2F6", href: "/locality?protein=E2F6+(Nucleus)" },
+          ]}
+        />
+        <p>On the other hand, these are not transcription factors (although they may still be involved in transcription regulation):</p>
+
+        <ImageCarousel
+          images={[
+            { src: "/write-up/images/dark/TRIM28-tf-dark.png", alt: "TRIM28", caption: "TRIM28", href: "/locality?protein=TRIM28+(Nucleus)" },
+            { src: "/write-up/images/dark/ELOC-tf-dark.png", alt: "ELOC", caption: "ELOC", href: "/locality?protein=ELOC+(Nucleus)" },
+            { src: "/write-up/images/dark/PRPF6-tf-dark.png", alt: "PRPF6", caption: "PRPF6", href: "/locality?protein=PRPF6+(Nucleus)" },
+            { src: "/write-up/images/dark/ESR2-tf-dark.png", alt: "ESR2", caption: "ESR2", href: "/locality?protein=ESR2+(Nucleus)" },
+            { src: "/write-up/images/dark/CDK9-tf-dark.png", alt: "CDK9", caption: "CDK9", href: "/locality?protein=CDK9+(Nucleus)" },
+            { src: "/write-up/images/dark/KDM1A-tf-dark.png", alt: "KDM1A", caption: "KDM1A", href: "/locality?protein=KDM1A+(Nucleus)" },
+          ]}
+        />
+
+        <p>There are exceptions too of course. For example, these aren’t TFs:</p>
+
+        <ImageCarousel
+          images={[
+            { src: "/write-up/images/dark/BMS1-tf-dark.png", alt: "BMS1", caption: "BMS1", href: "/locality?protein=BMS1+(Nucleus)" },
+            { src: "/write-up/images/dark/SMARCA4-tf-dark.png", alt: "SMARCA4", caption: "SMARCA4", href: "/locality?protein=SMARCA4+(Nucleus)" },
+            { src: "/write-up/images/dark/MED17-tf-dark.png", alt: "MED17", caption: "MED17", href: "/locality?protein=MED17+(Nucleus)" },
+          ]}
+        />
+
+        <p>And for the fall negative case, this is a TF:</p>
+
+        <ImageCarousel
+          images={[
+            { src: "/write-up/images/dark/AATF-tf-dark.png", alt: "AATF", caption: "AATF", href: "/locality?protein=AATF+(Nucleus)" },
+          ]}
+        />
+
+        <p>But, generally speaking, this transcription factor classification method has worked pretty well for me.</p>
+
+      </section>
+
+      <section>
+        <h2>The Pathway View</h2>
+
+        <blockquote className="not-prose quote-block">
+        The next step after [AlphaFold] would be modeling .. a whole pathway maybe like the TOR pathway. ” - Demis Hassabis
+        </blockquote>
+
+      <p>Our Hackathon project took inspiration from the utility of predicting biological pathways. During the Hackathon, Alex did an evaluation to see how well the RF/AF2 predictions cover the mTOR pathway (spoiler: not that well). This inspired our third visualization idea: visualizing pathways as part of the bigger graph.</p>
+
+      <p>Our Pathway View utilizes the KEGG database as a source for pathway data. Selecting a pathway (using mTOR as the example) displays a chart on the left and a corresponding graph on the right.</p> 
+
+      <FigureImage
+        lightSrc="/write-up/images/dark/pathway-light.png"
+        darkSrc="/write-up/images/dark/pathway-dark.png"
+        alt="Pathway view"
+      />
+
+      <ul>
+        <li>Elements (nodes and edges) visible in the pathway that are present in the dataset are shown with 100% opacity.</li>
+        <li>Elements that are mostly transparent are adjacent to the pathway (first-degree connections) but not explicitly part of the defined pathway chart.</li>
+        <li>The graph allows cross-referencing: selecting a protein or arrow on the pathway chart highlights the corresponding element in the graph view, and vice versa.</li>
+      </ul>
+
+      <p>Examining the mTOR pathway reveals interesting details.</p>
+
+      <p>We can see that the graph view comprises many graph “islands”. RF2/AF2, at 80% confidence, did not predict their connecting interactions. In fact, the namesake protein, MTOR, including its aliases, is not present in the graph at all because the model predicted no interaction between MTOR and other proteins.</p>
+
+      <p>The pathway begins with IGF1 interacting with IGF1R. The only interactor for IGF1 at 80% precision is IGFALS, so clicking on IGF1 on the pathway view shows an IGF1 island, disconnected from IGF1R.</p>
+
+      <FigureImage
+        lightSrc="/write-up/images/dark/IGF1-pathway-light.png"
+        darkSrc="/write-up/images/dark/IGF1-pathway-dark.png"
+        alt="IGF1 pathway view"
+      />
+
+      <p>Clicking on IGF1R highlights two proteins on the graph view: IGF1R and INS. That’s because the “IGF1R” box in the pathway drawing refers to both of these proteins, as seen in the details at the bottom .</p>
+
+      <FigureImage
+        lightSrc="/write-up/images/dark/IGF1R-pathway-light.png"
+        darkSrc="/write-up/images/dark/IGF1R-pathway-dark.png"
+        alt="IGF1R pathway view"
+      />
+
+      <p>The IGF1R → IRS1 connection is in the 80% precision predicted dataset, and clicking on that arrow does highlight it in the graph view.</p>
+
+      <FigureImage
+        lightSrc="/write-up/images/dark/IGF1R-IRS1-light.png"
+        darkSrc="/write-up/images/dark/IGF1R-IRS1-dark.png"
+        alt="IGF1R-IRS1 pathway view"
+      />
+
+      <p>A particularly cool feature of the graph view is seeing what lies outside the pathway boundaries. For instance, IGF1R interacts not only with the next step in the pathway but also with transparent-colored proteins around it, many of which are new (blue) interactions.</p>
+
+      <p>By examining the graph, we also see details not discernible in the pathway view. While each step in the pathway view appears equal, a quick scan of the graph view informs us which proteins are under more influence than others. We can see, for example, that RHOA, while just an innocent step at the end of the pathway view, acts as an interaction hub.</p>
+
+      <FigureImage
+        lightSrc="/write-up/images/dark/RHOA-pathway-light.png"
+        darkSrc="/write-up/images/dark/RHOA-pathway-dark.png"
+        alt="RHOA pathway view"
+      />
+
+      <p>We also observe connections between nodes that are physically represented in the pathway but are not shown as official steps (edges) on the chart. This may sometimes be an artifact of how pathways are drawn. Occasionally, new (blue) connections appear between nodes that are distant on the pathway chart, suggesting novel regulatory links.</p>
+
+      </section>
+      
+      <section>
+        <h2>Next Steps</h2>
+
+        <p>This blog post only offers a preliminary examination of the data. There are quite a few things we wanted to do but couldn’t get to during the Hackathon weekend:</p>
+
+        <h3>Pathway Coverage</h3>
+
+        <p>It would be convenient to implement a “Show coverage” button in the pathway view. This feature would highlight in green and red which interactions—based on the arbitrary confidence level specified—are or are not in the Baker dataset. This functionality was the initial motivation for the pathway exploration at the hackathon.</p>
+
+        <p>That said, I feel like a disclaimer here is warranted. One disclaimer is that the PPI data only shows us the possibility for interactions. It does not tell us anything about causation. The concept of “pathways” are artificially defined by us to delineate some cause and effect in protein interactions. If an PPI model had all of the mTOR pathway interactions in its predictions, would it be able to separate those specific ones from all the other interactions these proteins have and present it to us as a “pathway”? This seems unlikely to me from just PPI data.</p>
+
+        <p>Furthermore, interactions between proteins depend not only on the proteins involved, but also on external environmental factors such as protein concentration, the right PH environment, and other factors that as a non-biologist I’m not aware of.</p> 
+
+        <p>Finally, the possibility of multi-protein interactions have not been considered at all in this discussion.</p>
+
+        <h3>Importing Other Datasets</h3>
+
+        <p>The visualization currently uses a restricted dataset (about 30k interactions) for ease of rendering. The next crucial step is to load the entire 44 million (M) pair dataset predicted by RF2-PPI and allow users to dynamically select the desired confidence level. Similarly, the ability to visualize experimental datasets such as BIOGRID or Uniprot would be valuable.</p>
+
+        <h3>Pathfinding</h3>
+
+        <p>When playing around with this, I thought it would be interesting to have a pathfinding feature: given protein A and protein B, find all paths connecting A and B under k steps. I lack the scientific experience to know for sure that this would be useful; but intuitive, with so many possible connections at each node, there must be something insightful in finding paths.</p>
+
+        <h3>Explore the data on your own</h3>
+
+        <p>Explore the data at <a href="https://lbf7-best-team.vercel.app/">https://lbf7-best-team.vercel.app/</a>. A few notes:</p>
+          
+        <ul>
+          <li>This app is Hackathon quality, vibecoded, and hasn’t been touched since the Hackathon. As such there are many bugs, apologies</li>
+          <li>Graph page: The protein and interaction counts at the top left are correct at confidence level 0. It’s buggy when changing the confidence level, don’t trust it</li>
+          <li>Pathways page: There’s a known bug when switching pathways a few times. The graphs accumulate between switches and become really big. When that happens just refresh the page</li>
+          <li>Clicking on the node label (with the protein name) should work, but does not always work. To be safe, click on the blue / gray dot itself</li>
+        </ul>
+
+      </section>
+
     </article>
   );
 }

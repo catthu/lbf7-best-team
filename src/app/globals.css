@@ -128,3 +128,40 @@ html.dark {
   font-size: 1rem;
   line-height: 1.75;
 }
+
+/* Blockquotes inside the write-up content (ones marked as .quote-block) */
+.writeup blockquote.quote-block {
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+  padding-left: 1rem;
+  border-left: 3px solid #9ca3af; /* gray-400 vertical line */
+  color: #6b7280; /* gray-500 text, slightly darker than the line */
+}
+
+.writeup blockquote.quote-block p {
+  margin: 0;
+}
+
+/* Lists inside the write-up content */
+.writeup ul {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.writeup ul ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  list-style-type: circle;
+}
+
+.writeup li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Global blockquote contrast */
+blockquote {
+  font-style: italic;
+}
