@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
+import SiteFooter from "@/components/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,11 +45,15 @@ export default function RootLayout({
                 <Link href="/pathways" className="hover:text-white">
                   Pathways
                 </Link>
+                <Link href="/write-up" className="hover:text-white">
+                  Write-up
+                </Link>
               </div>
               <div />
             </nav>
           </header>
           <main className="relative flex-1 overflow-hidden">{children}</main>
+          <SiteFooter />
         </div>
       </body>
     </html>
