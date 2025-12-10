@@ -9,7 +9,7 @@ export default function Content() {
     <article className="space-y-8">
       <section>
       <FigureImage
-        lightSrc="/write-up/ppi-overview-light.png"
+        lightSrc="/write-up/images/light/intro-light.png"
         darkSrc="/write-up/images/dark/intro-dark.png"
         alt="Overview of the PPI graph"
       />
@@ -113,18 +113,30 @@ export default function Content() {
       <section>
         <h2>The Graph View</h2>
         <FigureImage
-        lightSrc="/write-up/ppi-overview-light.png"
+        lightSrc="/write-up/images/light/intro-light.png"
         darkSrc="/write-up/images/dark/intro-dark.png"
         alt="Overview of the PPI graph"
         caption="In the Graph View, proteins are initially distributed on a donut shape, with larger nodes located closer to the center."
       />
         <h3>IGLL1 and IGLL5</h3>
         <ImageCarousel
-            images={[
-              { src: "/write-up/images/dark/IGLL1-dark.png", alt: "IGLL1", caption: "IGLL1", href: "/?protein=IGLL1" },
-              { src: "/write-up/images/dark/IGLL5-dark.png", alt: "IGLL5", caption: "IGLL5", href: "/?protein=IGLL5" },
-            ]}
-          />
+          images={[
+            {
+              lightSrc: "/write-up/images/light/IGLL1-light.png",
+              darkSrc: "/write-up/images/dark/IGLL1-dark.png",
+              alt: "IGLL1",
+              caption: "IGLL1",
+              href: "/?protein=IGLL1",
+            },
+            {
+              lightSrc: "/write-up/images/light/IGLL5-light.png",
+              darkSrc: "/write-up/images/dark/IGLL5-dark.png",
+              alt: "IGLL5",
+              caption: "IGLL5",
+              href: "/?protein=IGLL5",
+            },
+          ]}
+        />
         <p>Immediately noticeable are two dark blue proteins:  
         <HoverPreview previewUrl="/next.svg" title="IGLL1 folded 3D structure">
           IGLL1 
@@ -137,19 +149,37 @@ export default function Content() {
         <p>The RF/AF model shows high confidence (over 95% confidence) for most of these new connections. After some research (disclaimer: I’m not a biologist), I learned that IGLL1 and IGLL5 are paralogs. IGLL1 expression is silenced and the protein is degraded during light chain production. So while IGLL1 might be able to interact with IGLV and IGKV molecularly, the light chain proteins, they are unlikely to be colocated. IGLL5, on the other hand, might be able to colocate with the IGKVs and IGLVs. It likely interacts with these light chain proteins at their structural regions, which is almost identical in the different light chain proteins. So the numerous interactions with IGLVs and IGKVs make sense.</p>
         <h3>Other Proteins</h3>
         <ImageCarousel
-            images={[
-              { src: "/write-up/images/dark/UBE2D1-dark.png", alt: "UBE2D1", caption: "UBE2D1", href: "/?protein=UBE2D1" },
-              { src: "/write-up/images/dark/UBE2D2-dark.png", alt: "UBE2D2", caption: "UBE2D2", href: "/?protein=UBE2D2" },
-              { src: "/write-up/images/dark/UBE2D3-dark.png", alt: "UBE2D3", caption: "UBE2D3", href: "/?protein=UBE2D3" },
-            ]}
-          />
+          images={[
+            {
+              lightSrc: "/write-up/images/light/UBE2D1-light.png",
+              darkSrc: "/write-up/images/dark/UBE2D1-dark.png",
+              alt: "UBE2D1",
+              caption: "UBE2D1",
+              href: "/?protein=UBE2D1",
+            },
+            {
+              lightSrc: "/write-up/images/light/UBE2D2-light.png",
+              darkSrc: "/write-up/images/dark/UBE2D2-dark.png",
+              alt: "UBE2D2",
+              caption: "UBE2D2",
+              href: "/?protein=UBE2D2",
+            },
+            {
+              lightSrc: "/write-up/images/light/UBE2D3-light.png",
+              darkSrc: "/write-up/images/dark/UBE2D3-dark.png",
+              alt: "UBE2D3",
+              caption: "UBE2D3",
+              href: "/?protein=UBE2D3",
+            },
+          ]}
+        />
         <p>We see some very active and well-understood proteins: UBE2D1, UBE2D2, UBE2D3 — conjugating enzymes involved in protein degradation. The predictions did not yield any new interactions for these proteins. There isn’t an easy way in our visualization tool to compare common interactions; but since these proteins are paralogs, it wouldn’t be surprising to see them share a long list of common interactions.</p>
         <p>Another such protein is TRIM28, located in the nucleus. This is what GPT5 told me about TRIM28:</p>
 
         <p>TRIM28 (also known as KAP1, TIF1β, or KRAB-associated protein 1) is one of the most fascinating and multifunctional proteins in mammalian cells.It’s a master transcriptional co-repressor, a chromatin organizer, and a genome stability guardian — especially important in stem cells, early embryos, and virus/retrotransposon silencing.</p>
 
         <FigureImage
-          lightSrc="/write-up/images/dark/TRIM28-light.png"
+          lightSrc="/write-up/images/light/TRIM28-light.png"
           darkSrc="/write-up/images/dark/TRIM28-dark.png"
           alt="TRIM28 graph"
         />
@@ -160,7 +190,7 @@ export default function Content() {
 
         <p>One structural feature of the IGLLs, UBE2s and TRIM28 graphs is that they are mostly star-like: very connected with almost no interconnections. Unlike those proteins, Keratins appear deeply embedded in a highly interconnected network.</p>
         <FigureImage
-          lightSrc="/write-up/images/dark/KRT8-light.png"
+          lightSrc="/write-up/images/light/KRT8-light.png"
           darkSrc="/write-up/images/dark/KRT8-dark.png"
           alt="Interconnected Keratin graph"
         />
@@ -170,7 +200,7 @@ export default function Content() {
       <section>
         <h2>The Locality View</h2>
         <FigureImage
-          lightSrc="/write-up/images/dark/locality-light.png"
+          lightSrc="/write-up/images/light/locality-light.png"
           darkSrc="/write-up/images/dark/locality-dark.png"
           alt="The locality view"
         />
@@ -188,12 +218,48 @@ export default function Content() {
 
         <ImageCarousel
           images={[
-            { src: "/write-up/images/dark/TCF4-dark.png", alt: "TCF4", caption: "TCF4", href: "/locality?protein=TCF4+(Nucleus)" },
-            { src: "/write-up/images/dark/TAF1L-dark.png", alt: "TAF1L", caption: "TAF1L", href: "/locality?protein=TAF1L+(Nucleus)" },
-            { src: "/write-up/images/dark/TCF3-dark.png", alt: "TCF3", caption: "TCF3", href: "/locality?protein=TCF3+(Nucleus)" },
-            { src: "/write-up/images/dark/TRIM28-locality-dark.png", alt: "TRIM28", caption: "TRIM28", href: "/locality?protein=TRIM28+(Nucleus)" },
-            { src: "/write-up/images/dark/MED1-dark.png", alt: "MED1", caption: "MED1", href: "/locality?protein=MED1+(Nucleus)" },
-            { src: "/write-up/images/dark/KDM1A-dark.png", alt: "KDM1A", caption: "KDM1A", href: "/locality?protein=KDM1A+(Nucleus)" },
+            {
+              lightSrc: "/write-up/images/light/TCF4-light.png",
+              darkSrc: "/write-up/images/dark/TCF4-dark.png",
+              alt: "TCF4",
+              caption: "TCF4",
+              href: "/locality?protein=TCF4+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/TAF1L-light.png",
+              darkSrc: "/write-up/images/dark/TAF1L-dark.png",
+              alt: "TAF1L",
+              caption: "TAF1L",
+              href: "/locality?protein=TAF1L+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/TCF3-light.png",
+              darkSrc: "/write-up/images/dark/TCF3-dark.png",
+              alt: "TCF3",
+              caption: "TCF3",
+              href: "/locality?protein=TCF3+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/TRIM28-locality-light.png",
+              darkSrc: "/write-up/images/dark/TRIM28-locality-dark.png",
+              alt: "TRIM28",
+              caption: "TRIM28",
+              href: "/locality?protein=TRIM28+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/MED1-light.png",
+              darkSrc: "/write-up/images/dark/MED1-dark.png",
+              alt: "MED1",
+              caption: "MED1",
+              href: "/locality?protein=MED1+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/KDM1A-light.png",
+              darkSrc: "/write-up/images/dark/KDM1A-dark.png",
+              alt: "KDM1A",
+              caption: "KDM1A",
+              href: "/locality?protein=KDM1A+(Nucleus)",
+            },
           ]}
         />
 
@@ -210,7 +276,7 @@ export default function Content() {
         <p>One protein that did surprise me in this view is SOS1.</p>
 
         <FigureImage
-          lightSrc="/write-up/images/dark/SOS1-light.png"
+          lightSrc="/write-up/images/light/SOS1-light.png"
           darkSrc="/write-up/images/dark/SOS1-dark.png"
           alt="SOS1 locality graph"
         />
@@ -224,7 +290,7 @@ export default function Content() {
         <p>LOC128125818 is an uncharacterized protein located in the membrane.</p>
 
         <FigureImage
-          lightSrc="/write-up/images/dark/LOC128125818-light.png"
+          lightSrc="/write-up/images/light/LOC128125818-light.png"
           darkSrc="/write-up/images/dark/LOC128125818-dark.png"
           alt="LOC128125818 locality graph"
         />
@@ -234,7 +300,7 @@ export default function Content() {
         <p>TMEM132B itself also has some new interactions, all at over 90% confidence.</p>
 
         <FigureImage
-          lightSrc="/write-up/images/dark/TMEM132B-light.png"
+          lightSrc="/write-up/images/light/TMEM132B-light.png"
           darkSrc="/write-up/images/dark/TMEM132B-dark.png"
           alt="TMEM132B graph"
         />
@@ -242,7 +308,7 @@ export default function Content() {
         <p>LHFPL4 is associated with inhibitory synaptic functions and itself has a new interaction with TMEM132D. This is also a transmembrane protein and, from the naming, probably associated with TMEM132B. All of this is consistent with the TMEM132B - LHFPL4 interaction being real.</p>
         
         <FigureImage
-          lightSrc="/write-up/images/dark/TMEM132D-light.png"
+          lightSrc="/write-up/images/light/TMEM132D-light.png"
           darkSrc="/write-up/images/dark/TMEM132D-dark.png"
           alt="TMEM132D graph"
         />
@@ -259,30 +325,138 @@ export default function Content() {
 
         <ImageCarousel
           images={[
-            { src: "/write-up/images/dark/TCF4-tf-dark.png", alt: "TCF4", caption: "TCF4", href: "/locality?protein=TCF4+(Nucleus)" },
-            { src: "/write-up/images/dark/TAF1L-tf-dark.png", alt: "TAF1L", caption: "TAF1L", href: "/locality?protein=TAF1L+(Nucleus)" },
-            { src: "/write-up/images/dark/TCF3-tf-dark.png", alt: "TCF3", caption: "TCF3", href: "/locality?protein=TCF3+(Nucleus)" },
-            { src: "/write-up/images/dark/ZSCAN20-tf-dark.png", alt: "ZSCAN20", caption: "ZSCAN20", href: "/locality?protein=ZSCAN20+(Nucleus)" },
-            { src: "/write-up/images/dark/SCAND1-tf-dark.png", alt: "SCAND1", caption: "SCAND1", href: "/locality?protein=SCAND1+(Nucleus)" },
-            { src: "/write-up/images/dark/ZNF397-tf-dark.png", alt: "ZNF397", caption: "ZNF397", href: "/locality?protein=ZNF397+(Nucleus)" },
-            { src: "/write-up/images/dark/BATF2-tf-dark.png", alt: "BATF2", caption: "BATF2", href: "/locality?protein=BATF2+(Nucleus)" },
-            { src: "/write-up/images/dark/MYOD1-tf-dark.png", alt: "MYOD1", caption: "MYOD1", href: "/locality?protein=MYOD1+(Nucleus)" },
-            { src: "/write-up/images/dark/ZNF174-tf-dark.png", alt: "ZNF174", caption: "ZNF174", href: "/locality?protein=ZNF174+(Nucleus)" },
-            { src: "/write-up/images/dark/MAX-tf-dark.png", alt: "MAX", caption: "MAX", href: "/locality?protein=MAX+(Nucleus)" },
-            { src: "/write-up/images/dark/HES3-tf-dark.png", alt: "HES3", caption: "HES3", href: "/locality?protein=HES3+(Nucleus)" },
-            { src: "/write-up/images/dark/E2F6-tf-dark.png", alt: "E2F6", caption: "E2F6", href: "/locality?protein=E2F6+(Nucleus)" },
+            {
+              lightSrc: "/write-up/images/light/TCF4-tf-light.png",
+              darkSrc: "/write-up/images/dark/TCF4-tf-dark.png",
+              alt: "TCF4",
+              caption: "TCF4",
+              href: "/locality?protein=TCF4+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/TAF1L-tf-light.png",
+              darkSrc: "/write-up/images/dark/TAF1L-tf-dark.png",
+              alt: "TAF1L",
+              caption: "TAF1L",
+              href: "/locality?protein=TAF1L+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/TCF3-tf-light.png",
+              darkSrc: "/write-up/images/dark/TCF3-tf-dark.png",
+              alt: "TCF3",
+              caption: "TCF3",
+              href: "/locality?protein=TCF3+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/ZSCAN20-tf-light.png",
+              darkSrc: "/write-up/images/dark/ZSCAN20-tf-dark.png",
+              alt: "ZSCAN20",
+              caption: "ZSCAN20",
+              href: "/locality?protein=ZSCAN20+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/SCAND1-tf-light.png",
+              darkSrc: "/write-up/images/dark/SCAND1-tf-dark.png",
+              alt: "SCAND1",
+              caption: "SCAND1",
+              href: "/locality?protein=SCAND1+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/ZNF397-tf-light.png",
+              darkSrc: "/write-up/images/dark/ZNF397-tf-dark.png",
+              alt: "ZNF397",
+              caption: "ZNF397",
+              href: "/locality?protein=ZNF397+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/BATF2-tf-light.png",
+              darkSrc: "/write-up/images/dark/BATF2-tf-dark.png",
+              alt: "BATF2",
+              caption: "BATF2",
+              href: "/locality?protein=BATF2+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/MYOD1-tf-light.png",
+              darkSrc: "/write-up/images/dark/MYOD1-tf-dark.png",
+              alt: "MYOD1",
+              caption: "MYOD1",
+              href: "/locality?protein=MYOD1+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/ZNF174-tf-light.png",
+              darkSrc: "/write-up/images/dark/ZNF174-tf-dark.png",
+              alt: "ZNF174",
+              caption: "ZNF174",
+              href: "/locality?protein=ZNF174+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/MAX-tf-light.png",
+              darkSrc: "/write-up/images/dark/MAX-tf-dark.png",
+              alt: "MAX",
+              caption: "MAX",
+              href: "/locality?protein=MAX+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/HES3-tf-light.png",
+              darkSrc: "/write-up/images/dark/HES3-tf-dark.png",
+              alt: "HES3",
+              caption: "HES3",
+              href: "/locality?protein=HES3+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/E2F6-tf-light.png",
+              darkSrc: "/write-up/images/dark/E2F6-tf-dark.png",
+              alt: "E2F6",
+              caption: "E2F6",
+              href: "/locality?protein=E2F6+(Nucleus)",
+            },
           ]}
         />
         <p>On the other hand, these are not transcription factors (although they may still be involved in transcription regulation):</p>
 
         <ImageCarousel
           images={[
-            { src: "/write-up/images/dark/TRIM28-tf-dark.png", alt: "TRIM28", caption: "TRIM28", href: "/locality?protein=TRIM28+(Nucleus)" },
-            { src: "/write-up/images/dark/ELOC-tf-dark.png", alt: "ELOC", caption: "ELOC", href: "/locality?protein=ELOC+(Nucleus)" },
-            { src: "/write-up/images/dark/PRPF6-tf-dark.png", alt: "PRPF6", caption: "PRPF6", href: "/locality?protein=PRPF6+(Nucleus)" },
-            { src: "/write-up/images/dark/ESR2-tf-dark.png", alt: "ESR2", caption: "ESR2", href: "/locality?protein=ESR2+(Nucleus)" },
-            { src: "/write-up/images/dark/CDK9-tf-dark.png", alt: "CDK9", caption: "CDK9", href: "/locality?protein=CDK9+(Nucleus)" },
-            { src: "/write-up/images/dark/KDM1A-tf-dark.png", alt: "KDM1A", caption: "KDM1A", href: "/locality?protein=KDM1A+(Nucleus)" },
+            {
+              lightSrc: "/write-up/images/light/TRIM28-tf-light.png",
+              darkSrc: "/write-up/images/dark/TRIM28-tf-dark.png",
+              alt: "TRIM28",
+              caption: "TRIM28",
+              href: "/locality?protein=TRIM28+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/ELOC-tf-light.png",
+              darkSrc: "/write-up/images/dark/ELOC-tf-dark.png",
+              alt: "ELOC",
+              caption: "ELOC",
+              href: "/locality?protein=ELOC+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/PRPF6-tf-light.png",
+              darkSrc: "/write-up/images/dark/PRPF6-tf-dark.png",
+              alt: "PRPF6",
+              caption: "PRPF6",
+              href: "/locality?protein=PRPF6+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/ESR2-tf-light.png",
+              darkSrc: "/write-up/images/dark/ESR2-tf-dark.png",
+              alt: "ESR2",
+              caption: "ESR2",
+              href: "/locality?protein=ESR2+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/CDK9-tf-light.png",
+              darkSrc: "/write-up/images/dark/CDK9-tf-dark.png",
+              alt: "CDK9",
+              caption: "CDK9",
+              href: "/locality?protein=CDK9+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/KDM1A-tf-light.png",
+              darkSrc: "/write-up/images/dark/KDM1A-tf-dark.png",
+              alt: "KDM1A",
+              caption: "KDM1A",
+              href: "/locality?protein=KDM1A+(Nucleus)",
+            },
           ]}
         />
 
@@ -290,9 +464,27 @@ export default function Content() {
 
         <ImageCarousel
           images={[
-            { src: "/write-up/images/dark/BMS1-tf-dark.png", alt: "BMS1", caption: "BMS1", href: "/locality?protein=BMS1+(Nucleus)" },
-            { src: "/write-up/images/dark/SMARCA4-tf-dark.png", alt: "SMARCA4", caption: "SMARCA4", href: "/locality?protein=SMARCA4+(Nucleus)" },
-            { src: "/write-up/images/dark/MED17-tf-dark.png", alt: "MED17", caption: "MED17", href: "/locality?protein=MED17+(Nucleus)" },
+            {
+              lightSrc: "/write-up/images/light/BMS1-tf-light.png",
+              darkSrc: "/write-up/images/dark/BMS1-tf-dark.png",
+              alt: "BMS1",
+              caption: "BMS1",
+              href: "/locality?protein=BMS1+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/SMARCA4-tf-light.png",
+              darkSrc: "/write-up/images/dark/SMARCA4-tf-dark.png",
+              alt: "SMARCA4",
+              caption: "SMARCA4",
+              href: "/locality?protein=SMARCA4+(Nucleus)",
+            },
+            {
+              lightSrc: "/write-up/images/light/MED17-tf-light.png",
+              darkSrc: "/write-up/images/dark/MED17-tf-dark.png",
+              alt: "MED17",
+              caption: "MED17",
+              href: "/locality?protein=MED17+(Nucleus)",
+            },
           ]}
         />
 
@@ -300,7 +492,13 @@ export default function Content() {
 
         <ImageCarousel
           images={[
-            { src: "/write-up/images/dark/AATF-tf-dark.png", alt: "AATF", caption: "AATF", href: "/locality?protein=AATF+(Nucleus)" },
+            {
+              lightSrc: "/write-up/images/light/AATF-tf-light.png",
+              darkSrc: "/write-up/images/dark/AATF-tf-dark.png",
+              alt: "AATF",
+              caption: "AATF",
+              href: "/locality?protein=AATF+(Nucleus)",
+            },
           ]}
         />
 
@@ -320,7 +518,7 @@ export default function Content() {
       <p>Our Pathway View utilizes the KEGG database as a source for pathway data. Selecting a pathway (using mTOR as the example) displays a chart on the left and a corresponding graph on the right.</p> 
 
       <FigureImage
-        lightSrc="/write-up/images/dark/pathway-light.png"
+        lightSrc="/write-up/images/light/pathway-light.png"
         darkSrc="/write-up/images/dark/pathway-dark.png"
         alt="Pathway view"
       />
@@ -338,7 +536,7 @@ export default function Content() {
       <p>The pathway begins with IGF1 interacting with IGF1R. The only interactor for IGF1 at 80% precision is IGFALS, so clicking on IGF1 on the pathway view shows an IGF1 island, disconnected from IGF1R.</p>
 
       <FigureImage
-        lightSrc="/write-up/images/dark/IGF1-pathway-light.png"
+        lightSrc="/write-up/images/light/IGF1-pathway-light.png"
         darkSrc="/write-up/images/dark/IGF1-pathway-dark.png"
         alt="IGF1 pathway view"
       />
@@ -346,7 +544,7 @@ export default function Content() {
       <p>Clicking on IGF1R highlights two proteins on the graph view: IGF1R and INS. That’s because the “IGF1R” box in the pathway drawing refers to both of these proteins, as seen in the details at the bottom .</p>
 
       <FigureImage
-        lightSrc="/write-up/images/dark/IGF1R-pathway-light.png"
+        lightSrc="/write-up/images/light/IGF1R-pathway-light.png"
         darkSrc="/write-up/images/dark/IGF1R-pathway-dark.png"
         alt="IGF1R pathway view"
       />
@@ -354,7 +552,7 @@ export default function Content() {
       <p>The IGF1R → IRS1 connection is in the 80% precision predicted dataset, and clicking on that arrow does highlight it in the graph view.</p>
 
       <FigureImage
-        lightSrc="/write-up/images/dark/IGF1R-IRS1-light.png"
+        lightSrc="/write-up/images/light/IGF1R-IRS1-light.png"
         darkSrc="/write-up/images/dark/IGF1R-IRS1-dark.png"
         alt="IGF1R-IRS1 pathway view"
       />
@@ -364,7 +562,7 @@ export default function Content() {
       <p>By examining the graph, we also see details not discernible in the pathway view. While each step in the pathway view appears equal, a quick scan of the graph view informs us which proteins are under more influence than others. We can see, for example, that RHOA, while just an innocent step at the end of the pathway view, acts as an interaction hub.</p>
 
       <FigureImage
-        lightSrc="/write-up/images/dark/RHOA-pathway-light.png"
+        lightSrc="/write-up/images/light/RHOA-pathway-light.png"
         darkSrc="/write-up/images/dark/RHOA-pathway-dark.png"
         alt="RHOA pathway view"
       />
