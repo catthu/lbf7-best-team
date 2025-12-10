@@ -22,7 +22,7 @@
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-utils": "^2.5.2",
     "lodash": "^4.17.21",
-    "next": "15.5.4",
+    "next": "^15.5.7",
     "prisma": "^6.16.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
