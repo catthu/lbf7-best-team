@@ -1958,7 +1958,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
 
   return (
     <div className="w-full h-full flex flex-col relative">
-      <div className="absolute top-2 left-2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm max-w-xs">
+      <div className="absolute top-2 left-2 z-10 bg-white/95 text-gray-900 backdrop-blur rounded-md border border-gray-300 dark:bg-gray-800/90 dark:text-white dark:border-gray-700 px-4 py-3 shadow text-sm max-w-xs">
         {focusedInfo ? (
           <div>
             <div><span className="font-medium">Protein:</span> {focusedInfo.name}</div>
@@ -1976,23 +1976,29 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
       {/* Sidebar controls box under info box (collapsible) */}
       <div className="absolute top-28 left-2 z-10">
         {sidebarOpen ? (
-          <div className="relative w-80 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-4 py-3 shadow text-sm flex flex-col gap-3">
+          <div className="relative w-80 bg-white/95 text-gray-900 backdrop-blur rounded-md border border-gray-300 dark:bg-gray-800/90 dark:text-white dark:border-gray-700 px-4 py-3 shadow text-sm flex flex-col gap-3">
             <button
               aria-label="Collapse sidebar"
               onClick={() => setSidebarOpen(false)}
-              className="absolute -right-3 top-3 h-6 w-6 rounded-full border border-gray-700 bg-gray-800/90 text-white flex items-center justify-center shadow"
+              className="absolute -right-3 top-3 h-6 w-6 rounded-full border border-gray-300 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800/90 dark:text-white flex items-center justify-center shadow"
             >
               ‹
             </button>
             <label className="flex items-center justify-between gap-2 text-sm">
               <span>Show only new</span>
-              <input type="checkbox" checked={showOnlyNew} onChange={(e) => setShowOnlyNew(e.target.checked)} />
+              <input
+                type="checkbox"
+                className="accent-blue-500"
+                checked={showOnlyNew}
+                onChange={(e) => setShowOnlyNew(e.target.checked)}
+              />
             </label>
             {/* locality toggle moved to top bar */}
             <label className="flex items-center justify-between gap-2 text-sm opacity-100">
               <span>Show all edges</span>
           <input
                 type="checkbox"
+                className="accent-blue-500"
                 checked={showAllEdges}
                 onChange={(e) => setShowAllEdges(e.target.checked)}
                 disabled={!!focusedNodeRef.current}
@@ -2003,7 +2009,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               <span className="tabular-nums">{confidence.toFixed(2)}</span>
             </div>
             <input
-              className="w-full"
+              className="w-full accent-blue-500"
               type="range"
               min={0}
               max={1}
@@ -2022,7 +2028,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               <span className="tabular-nums">{degreeThreshold}</span>
             </div>
             <input
-              className="w-full"
+              className="w-full accent-blue-500"
             type="range"
             min={0}
             max={50}
@@ -2036,13 +2042,15 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               }}
             />
             {geneInfo && (
-              <div className="mt-1 rounded-md border border-gray-700 bg-gray-900/70 p-2">
-                <div className="text-xs text-gray-300">
+              <div className="mt-1 rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/70 p-2">
+                <div className="text-xs text-gray-800 dark:text-gray-300">
                   <span className="font-semibold">{geneInfo.symbol || geneInfo.name}</span>
                   {geneInfo.name && geneInfo.symbol && <span className="ml-1">— {geneInfo.name}</span>}
                 </div>
                 {geneInfo.summary && (
-                  <div className="mt-1 text-xs text-gray-200 leading-snug line-clamp-4">{geneInfo.summary}</div>
+                  <div className="mt-1 text-xs text-gray-700 dark:text-gray-200 leading-snug line-clamp-4">
+                    {geneInfo.summary}
+                  </div>
                 )}
               </div>
             )}
@@ -2051,13 +2059,13 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
           <button
             aria-label="Expand sidebar"
             onClick={() => setSidebarOpen(true)}
-            className="bg-gray-800/90 text-white border border-gray-700 rounded-md px-2 py-2 shadow"
+            className="bg-white/95 text-gray-900 border border-gray-300 dark:bg-gray-800/90 dark:text-white dark:border-gray-700 rounded-md px-2 py-2 shadow"
           >
             ›
           </button>
         )}
       </div>
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gray-800/90 text-white backdrop-blur rounded-md border border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-white/95 text-gray-900 backdrop-blur rounded-md border border-gray-300 dark:bg-gray-800/90 dark:text-white dark:border-gray-700 px-3 py-2 flex items-center gap-4 shadow">
         <div className="relative">
           <input
             value={searchQuery}
@@ -2068,7 +2076,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               }
             }}
             placeholder="Search node…"
-            className="border rounded px-2 py-1 text-sm w-56 bg-white text-gray-900 placeholder-gray-400"
+            className="border border-gray-300 rounded px-2 py-1 text-sm w-56 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {searchQuery && searchMatches.length > 0 && (
             <div className="absolute mt-1 w-56 max-h-56 overflow-auto bg-white border border-gray-300 rounded shadow z-10">
