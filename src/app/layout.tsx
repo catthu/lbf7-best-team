@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
 import SiteFooter from "@/components/SiteFooter";
+import MainNav from "@/components/MainNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,23 +34,7 @@ export default function RootLayout({
       >
         <div className="min-h-screen flex flex-col">
           <header className="sticky top-0 z-20 bg-gray-50 text-gray-900 border-b border-gray-200 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-800">
-            <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-12 flex items-center justify-between">
-              <div className="flex items-center gap-6 text-sm">
-                <Link href="/" className="font-semibold hover:text-white">
-                  Graph
-                </Link>
-                <Link href="/locality" className="hover:text-white">
-                  Locality
-                </Link>
-                <Link href="/pathways" className="hover:text-white">
-                  Pathways
-                </Link>
-                <Link href="/write-up" className="hover:text-white">
-                  Write-up
-                </Link>
-              </div>
-              <div />
-            </nav>
+            <MainNav />
           </header>
           <main className="relative flex-1 overflow-hidden">{children}</main>
           <SiteFooter />

@@ -286,6 +286,14 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
     if (focused) return; // only applies in non-focused view
     const onlyNew = showOnlyNewRef.current;
     const conf = confidence;
+    const isDarkTheme =
+      typeof document !== "undefined" &&
+      (document.documentElement.classList.contains("dark") ||
+        (typeof window !== "undefined" &&
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches));
+    const blueEdgeColor = isDarkTheme ? "#3b82f6" : "#2563eb"; // deeper blue in light mode only
+
     g.forEachEdge((e, attrs) => {
       const adb = (attrs as any)?.allDBs || '';
       const isNone = String(adb).trim().toLowerCase() === 'none';
@@ -294,7 +302,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
       const hideByConf = typeof ap === 'number' ? ap < conf : false;
       const shouldShow = showAllEdges && !(hideByNew || hideByConf);
       g.setEdgeAttribute(e, 'hidden', !shouldShow);
-      if (shouldShow && isNone) g.setEdgeAttribute(e, 'color', '#3b82f6');
+      if (shouldShow && isNone) g.setEdgeAttribute(e, 'color', blueEdgeColor);
       else if (!shouldShow) g.setEdgeAttribute(e, 'color', undefined);
     });
     try { (s as any).setSetting('renderEdges', showAllEdges || (showEdgesRef.current && (s.getCamera().getState().ratio < 1.5))); } catch {}
@@ -558,6 +566,19 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
         let panStart: {x: number; y: number} | null = null;
         let viewStart = {scale: 1, tx: 0, ty: 0};
 
+        const isDarkTheme =
+          typeof document !== "undefined" &&
+          (document.documentElement.classList.contains("dark") ||
+            (typeof window !== "undefined" &&
+              typeof window.matchMedia === "function" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches));
+        // Dark-theme colors match original styling; light-theme colors increase contrast
+        // Light mode: use neutral grays so gray vs blue is clearer, and soften non-blue nodes.
+        const edgeColor = isDarkTheme ? "rgba(150,150,150,0.6)" : "rgba(130,130,130,0.9)"; // neutral gray
+        const neighborNodeColor = isDarkTheme ? "#9aa" : "#9ca3af"; // light gray for hovered neighborhood
+        const baseNodeColor = isDarkTheme ? "#bbb" : "#e5e7eb"; // even softer for distant nodes
+        const labelColor = isDarkTheme ? "#eee" : "#111827";
+
         const draw = () => {
           const ctx2 = fallbackCtxRef.current!;
           const rect = canvas.getBoundingClientRect();
@@ -565,8 +586,8 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
           if (hovered && showEdgesRef.current) {
             const src = nodes[idToIndexRef.current[hovered]];
             if (src) {
-              ctx2.strokeStyle = "rgba(150,150,150,0.6)";
-              ctx2.lineWidth = 1;
+              ctx2.strokeStyle = edgeColor;
+              ctx2.lineWidth = isDarkTheme ? 1 : 1.1;
               const srcS = worldToScreen(src);
               for (const nb of adjacencyRef.current[hovered] || []) {
                 const t = nodes[idToIndexRef.current[nb]];
@@ -587,7 +608,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
             const {x, y} = worldToScreen(n);
             const r = Math.max(1, Math.sqrt(Math.max(1, n.degree)));
             const isNeighbor = hovered ? (n.id === hovered || (adjacencyRef.current[hovered] || []).includes(n.id)) : true;
-            ctx2.fillStyle = isNeighbor ? "#9aa" : "#bbb";
+            ctx2.fillStyle = isNeighbor ? neighborNodeColor : baseNodeColor;
             ctx2.beginPath();
             ctx2.arc(x, y, r, 0, Math.PI * 2);
             ctx2.fill();
@@ -596,7 +617,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
             const h = nodes[idToIndexRef.current[hovered]];
             if (h) {
               const p = worldToScreen(h);
-              ctx2.fillStyle = "#eee";
+              ctx2.fillStyle = labelColor;
               ctx2.font = "12px system-ui, -apple-system, sans-serif";
               ctx2.fillText(h.name, p.x + 8, p.y - 8);
             }
@@ -839,13 +860,28 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
           }
           container.style.overflow = "hidden";
           container.style.position = container.style.position || "absolute";
-          const s = new Sigma(g, container, {
+
+          const isDarkTheme =
+            typeof document !== "undefined" &&
+            (document.documentElement.classList.contains("dark") ||
+              (typeof window !== "undefined" &&
+                typeof window.matchMedia === "function" &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches));
+          const sigmaSettings: any = {
             renderLabels: true,
             labelRenderedSizeThreshold: 999999,
             // minCameraRatio will be enforced dynamically based on initial fit
             minCameraRatio: 0.01,
             maxCameraRatio: 10,
-          });
+          };
+          // Increase contrast only in light mode; keep dark mode unchanged
+          if (!isDarkTheme) {
+            // Higher-contrast palette for light mode only (keep blue edges distinct, gray nodes softer)
+            sigmaSettings.defaultNodeColor = "#9ca3af"; // gray-400, less contrasty
+            sigmaSettings.defaultEdgeColor = "rgba(130,130,130,0.9)"; // neutral gray, clearly non-blue
+          }
+
+          const s = new Sigma(g, container, sigmaSettings);
 
           // Debug logging toggle (default on). To disable: set window.__graphDebug = false in console.
           const isDebug = () => (window as any).__graphDebug !== false;
@@ -1345,6 +1381,13 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
 
           // Draw only edges connected to hovered node when showEdges is on
           if (showEdgesRef.current && !showAllEdgesRef.current) {
+            const isDarkThemeLocal =
+              typeof document !== "undefined" &&
+              (document.documentElement.classList.contains("dark") ||
+                (typeof window !== "undefined" &&
+                  typeof window.matchMedia === "function" &&
+                  window.matchMedia("(prefers-color-scheme: dark)").matches));
+            const blueEdgeColorLocal = isDarkThemeLocal ? "#3b82f6" : "#2563eb";
             g.forEachEdge((e, _attr, sId, tId) => {
               let visible = node ? neighbors.has(sId) && neighbors.has(tId) : false;
               const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
@@ -1353,7 +1396,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               const ap = g.getEdgeAttribute(e, 'afmprob') as number | undefined;
               const hideByConf = typeof ap === 'number' ? ap < confidenceRef.current : false;
               g.setEdgeAttribute(e, "hidden", !visible || hideByNew || hideByConf);
-              if (visible) g.setEdgeAttribute(e, 'color', isNone ? '#3b82f6' : undefined);
+              if (visible) g.setEdgeAttribute(e, 'color', isNone ? blueEdgeColorLocal : undefined);
               else g.setEdgeAttribute(e, 'color', undefined);
             });
           } else {
@@ -1519,6 +1562,13 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
             g.setNodeAttribute(node, "label", name);
           }
           if (showEdgesRef.current) {
+            const isDarkThemePreview =
+              typeof document !== "undefined" &&
+              (document.documentElement.classList.contains("dark") ||
+                (typeof window !== "undefined" &&
+                  typeof window.matchMedia === "function" &&
+                  window.matchMedia("(prefers-color-scheme: dark)").matches));
+            const blueEdgeColorPreview = isDarkThemePreview ? "#3b82f6" : "#2563eb";
             const nbSet = new Set<string>();
             if (node) {
               nbSet.add(node);
@@ -1529,7 +1579,7 @@ export default function GraphViewer({ initialViewMode, initialFocus }: { initial
               const adb = (g.getEdgeAttribute(e, 'allDBs') || '').toString().trim().toLowerCase();
               const isNone = adb === 'none';
               g.setEdgeAttribute(e, 'hidden', !vis);
-              if (vis) g.setEdgeAttribute(e, 'color', isNone ? '#3b82f6' : undefined);
+              if (vis) g.setEdgeAttribute(e, 'color', isNone ? blueEdgeColorPreview : undefined);
               else g.setEdgeAttribute(e, 'color', undefined);
             });
           } else {
