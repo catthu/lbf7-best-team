@@ -1,6 +1,7 @@
 export const metadata = {
   title: "Write-up",
-  description: "Observations and findings from the visualization",
+  description:
+    "Narrative walk-through of the Baker Lab protein–protein interaction visualization and key biological observations.",
 };
 
 import Content from "@/app/write-up/content";
